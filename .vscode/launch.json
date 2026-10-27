@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Personas Flutter (Android/iOS)",
+      "type": "dart",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/flutter_app",
+      "program": "${workspaceFolder}/flutter_app/lib/main.dart",
+      "toolArgs": ["--dart-define-from-file=.env"]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+local.properties
+.gradle/
+.kotlin/
+*.iml
+**/build/
+.idea/
+.DS_Store
+*.hprof
+*.jks
+evaluation-private/
+
+__pycache__/
+.tooling/
+.dart_tool/
+**/.dart_tool/
+**/.flutter-plugins-dependencies
+**/Pods/
+**/.symlinks/
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/xcuserdata/
+
+# Local endpoint configuration; only templates belong in Git.
+.env
+.env.*
+!.env.example

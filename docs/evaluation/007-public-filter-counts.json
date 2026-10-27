@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-22",
+  "applicationVersion": "0.6.0",
+  "platform": "OpenCV 4.12.0 FP32, Android API 36, CPH2637",
+  "source": "https://www.cl.cam.ac.uk/research/dtg/attarchive/facedatabase.html",
+  "credit": "AT&T Laboratories Cambridge",
+  "archiveSha256": "509d763bd2276aa054d260d7f1000e8be212738134f2f83d8ff13bc2adf1c8ec",
+  "automaticThreshold": 0.5,
+  "reviewThreshold": 0.363,
+  "calibrationSubjects": [
+    1,
+    20
+  ],
+  "evaluationSubjects": [
+    21,
+    40
+  ],
+  "selectionRule": "Lowest threshold of [0.50,0.55,0.60,0.65,0.70] with zero calibration false positives for all reference protocols",
+  "queryFaceImages": 400,
+  "referenceFaceImages": 160,
+  "counts": {
+    "source": "AT&T Laboratories Cambridge; 20 calibration identities and 20 distinct evaluation identities; frontal low-resolution controlled data, not family albums",
+    "calibration": {
+      "1": {
+        "TP": 179,
+        "FP": 0,
+        "FN": 1,
+        "TN": 3420,
+        "reviewPositive": 1,
+        "reviewNegative": 10,
+        "previousTP": 180,
+        "previousFP": 10
+      },
+      "2": {
+        "TP": 159,
+        "FP": 0,
+        "FN": 1,
+        "TN": 3040,
+        "reviewPositive": 1,
+        "reviewNegative": 9,
+        "previousTP": 160,
+        "previousFP": 9
+      },
+      "4": {
+        "TP": 120,
+        "FP": 0,
+        "FN": 0,
+        "TN": 2280,
+        "reviewPositive": 0,
+        "reviewNegative": 8,
+        "previousTP": 120,
+        "previousFP": 8
+      }
+    },
+    "evaluation": {
+      "1": {
+        "TP": 177,
+        "FP": 0,
+        "FN": 3,
+        "TN": 3420,
+        "reviewPositive": 3,
+        "reviewNegative": 0,
+        "previousTP": 180,
+        "previousFP": 0
+      },
+      "2": {
+        "TP": 160,
+        "FP": 0,
+        "FN": 0,
+        "TN": 3040,
+        "reviewPositive": 0,
+        "reviewNegative": 0,
+        "previousTP": 160,
+        "previousFP": 0
+      },
+      "4": {
+        "TP": 120,
+        "FP": 0,
+        "FN": 0,
+        "TN": 2280,
+        "reviewPositive": 0,
+        "reviewNegative": 0,
+        "previousTP": 120,
+        "previousFP": 0
+      }
+    }
+  },
+  "limitations": "Historical grayscale frontal faces; internal separate-identity evaluation, not externally blind or family albums. Unknown overlap with supplier pretraining. Reference protocols overlap and must not be summed as independent samples."
+}
