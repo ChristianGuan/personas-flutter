@@ -25,10 +25,21 @@ cp flutter_app/.env.example flutter_app/.env
 Configura la dirección del backend en `flutter_app/.env`:
 
 ```dotenv
-ANALYTICS_API_URL=https://tu-api
+ANALYTICS_API_URL=https://halladin.cloud
 ```
 
-El helper y VS Code cargan este archivo al compilar. Si cambia la URL, recompila la app. Un archivo vacío deja la analítica sin transporte; nunca se incluyen `DATABASE_URL`, contraseñas ni `ADMIN_TOKEN` en Flutter. En teléfonos físicos se necesita HTTPS accesible desde el dispositivo; `127.0.0.1` del teléfono no corresponde al Mac.
+El helper carga este archivo al compilar. VS Code configura producción mediante `--dart-define`. Si cambia la URL, recompila la app. Un valor vacío deja la analítica sin transporte; nunca se incluyen `DATABASE_URL`, contraseñas ni `ADMIN_TOKEN` en Flutter. En teléfonos físicos se necesita HTTPS accesible desde el dispositivo; `127.0.0.1` del teléfono no corresponde al Mac.
+
+Para compilar con la API del VPS desde la raíz del repositorio:
+
+```sh
+./tools/flutter.sh build appbundle --release --dart-define=ANALYTICS_API_URL=https://halladin.cloud
+./tools/flutter.sh build ios --release --dart-define=ANALYTICS_API_URL=https://halladin.cloud
+```
+
+Android requiere la firma release local; iOS requiere el equipo y perfiles de firma. El `--dart-define` explícito tiene prioridad sobre `.env`. También puedes ejecutar `flutter build appbundle --release --dart-define=ANALYTICS_API_URL=https://halladin.cloud` desde `flutter_app/`.
+
+La base es sólo `https://halladin.cloud`, sin `/v1`, `/docs` ni `/docs-json`. El transporte añade las rutas absolutas `/v1/analytics/installations`, `/v1/analytics/events/batch` y `/v1/analytics/installations/{id}`; rechaza bases con prefijos para evitar configuraciones ambiguas. Contrato: [OpenAPI](https://halladin.cloud/docs-json), [Swagger](https://halladin.cloud/docs). El dominio configurado no activa la analítica: sigue siendo necesario el consentimiento. Consulta [la integración y validación](docs/analytics-production.md).
 
 Para iOS, prepara OpenCV con `python3 tools/setup_opencv_ios.py`; configura tu equipo de firma en Xcode. El proyecto referencia el framework local en `.tooling/opencv-ios/` y los modelos del propio repositorio. Consulta [la guía de Flutter](flutter_app/README.md) para detalles nativos.
 

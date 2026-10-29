@@ -27,9 +27,10 @@ class HttpAnalyticsTransport implements AnalyticsTransport {
         base.userInfo.isNotEmpty ||
         base.hasQuery ||
         base.hasFragment ||
+        (base.path.isNotEmpty && base.path != '/') ||
         (base.scheme != 'https' &&
             !(kDebugMode && local && base.scheme == 'http')))
-      throw ArgumentError('Use an HTTPS analytics API');
+      throw ArgumentError('Use an HTTPS analytics origin without a path');
   }
   Future<Map<String, dynamic>> _request(
     String method,
@@ -66,9 +67,14 @@ class HttpAnalyticsTransport implements AnalyticsTransport {
 
   @override
   Future<void> register(String id, String token) async {
-    await _request('POST', '/v1/analytics/installations', token, {
-      'installationId': id,
-    });
+    final result = await _request(
+      'POST',
+      '/v1/analytics/installations',
+      token,
+      {'installationId': id},
+    );
+    if (result['registered'] != true)
+      throw const FormatException('Registration unconfirmed');
   }
 
   @override
