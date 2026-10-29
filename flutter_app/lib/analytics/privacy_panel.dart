@@ -1,7 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'service.dart';
 
 class AnalyticsPrivacyPanel extends StatelessWidget {
+  static const privacyUrl = 'https://halladin.cloud/privacidad';
+  Future<void> _openPrivacy(BuildContext context) async {
+    try {
+      await const MethodChannel(
+        'co.local.personas/photos',
+      ).invokeMethod<void>('openPrivacyPolicy');
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No pudimos abrir el navegador. Consulta $privacyUrl'),
+        ),
+      );
+    }
+  }
+
   final AnalyticsService service;
   final bool showHeading;
   const AnalyticsPrivacyPanel({
@@ -36,6 +53,11 @@ class AnalyticsPrivacyPanel extends StatelessWidget {
           const Text(
             'Actualizamos la información que compartimos. Revisa este mensaje y decide si quieres seguir colaborando. Hasta que aceptes, no recogeremos datos nuevos.',
           ),
+        TextButton.icon(
+          onPressed: () => _openPrivacy(context),
+          icon: const Icon(Icons.privacy_tip_outlined),
+          label: const Text('Política de privacidad'),
+        ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Quiero compartir datos de uso'),

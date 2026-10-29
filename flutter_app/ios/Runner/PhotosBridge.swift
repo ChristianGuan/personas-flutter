@@ -198,6 +198,12 @@ final class PhotosBridge: NSObject, FlutterPlugin, FlutterStreamHandler, PHPicke
         case "share":
             guard !sharing, let ids = args["ids"] as? [String], !ids.isEmpty else { fail(result, photoError("Selecciona las fotografías que quieres compartir.")); return }
             sharing = true; share(ids, index: 0, urls: [], result: result)
+        case "openPrivacyPolicy":
+            let url = URL(string: "https://halladin.cloud/privacidad")!
+            UIApplication.shared.open(url, options: [:]) { opened in
+                if opened { result(nil) }
+                else { result(FlutterError(code: "browser_unavailable", message: "No se pudo abrir la política de privacidad.", details: nil)) }
+            }
         case "settings":
             guard let url = URL(string: UIApplication.openSettingsURLString) else { result(nil); return }; UIApplication.shared.open(url); result(nil)
         case "cloudSettings": fail(result, photoError("En iPhone usa Fotos para iCloud, Archivos para Google Drive o Compartir → Halladin desde Google Fotos."))

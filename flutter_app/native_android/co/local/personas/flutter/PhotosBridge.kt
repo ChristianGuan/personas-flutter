@@ -181,6 +181,10 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
                 }
                 activity.startActivity(Intent.createChooser(share,"Compartir fotos"));result.success(null)
             }
+            "openPrivacyPolicy" -> {
+                activity.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://halladin.cloud/privacidad")))
+                result.success(null)
+            }
             "settings" -> {activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+activity.packageName)));result.success(null)}
             "cloudSettings" -> {
                 check(Build.VERSION.SDK_INT>=33 || (Build.VERSION.SDK_INT>=30 && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R)>=3))

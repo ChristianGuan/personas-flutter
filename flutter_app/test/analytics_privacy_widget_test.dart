@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart' hide SearchController;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+import 'package:personas_flutter/analytics/privacy_panel.dart';
 import 'package:personas_flutter/main.dart';
 import 'package:personas_flutter/analytics/service.dart';
 import 'package:personas_flutter/search_controller.dart';
@@ -19,6 +21,77 @@ class TestAnalytics extends AnalyticsService {
 }
 
 void main() {
+  testWidgets('privacy policy opens without analytics consent', (tester) async {
+    final analytics = TestAnalytics();
+    final calls = <MethodCall>[];
+    const channel = MethodChannel('co.local.personas/photos');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      );
+      analytics.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AnalyticsPrivacyPanel(service: analytics),
+          ),
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('Política de privacidad'));
+    await tester.tap(find.text('Política de privacidad'));
+    await tester.pumpAndSettle();
+    expect(calls.single.method, 'openPrivacyPolicy');
+    expect(analytics.enabled, false);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('browser failure shows the policy URL without blocking the app', (
+    tester,
+  ) async {
+    final analytics = TestAnalytics();
+    const channel = MethodChannel('co.local.personas/photos');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      _,
+    ) async {
+      throw PlatformException(code: 'browser_unavailable');
+    });
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        null,
+      );
+      analytics.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: AnalyticsPrivacyPanel(service: analytics),
+          ),
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('Política de privacidad'));
+    await tester.tap(find.text('Política de privacidad'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(AnalyticsPrivacyPanel.privacyUrl),
+      findsOneWidget,
+    );
+    expect(analytics.enabled, false);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'consent is reachable from results, optional and scrollable on a small screen',
     (tester) async {

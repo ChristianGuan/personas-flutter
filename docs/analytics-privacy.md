@@ -23,7 +23,7 @@ Declaración a trasladar al formulario de la versión publicada por el titular; 
 | Dispositivo u otros IDs | UUID aleatorio por instalación, no IDs de hardware | Analítica, opcional, borrado autenticado |
 | Actividad en la app / interacciones | sesiones, búsquedas, cantidades agrupadas, confirmadas/rechazadas | Analítica, opcional |
 | Información y rendimiento de la app / diagnósticos y otros datos de rendimiento | duraciones y categorías generales de error, sin trazas | Analítica, opcional |
-| Actividad / otro contenido generado por usuario | estrellas1..5 y valoración de coincidencias en totales | Analítica, opcional; nunca fotos |
+| Actividad / otras acciones | estrellas1..5 y confirmaciones/rechazos de coincidencias en totales, sin texto libre | Analítica, opcional; nunca fotos |
 
 Recopilados sólo si se acepta; no procesados efímeramente (persisten hasta30d). No compartidos con terceros en esta implementación propia; un futuro hosting/proxy/SDK requiere revisar su función y términos. No publicidad, no tracking, no localización ni información personal de cuenta. Cifrado en tránsito sólo si se configura HTTPS en la versión distribuida (Flutter release rechaza HTTP). Documentar URL pública de privacidad y borrado según configuración real del servicio antes de publicar. Verificar declaraciones contra el binario final y las políticas vigentes.
 

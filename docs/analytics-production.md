@@ -12,6 +12,8 @@ Desde la raíz del repositorio:
 
 La firma Android y los perfiles iOS se configuran localmente. No se incluye ninguna credencial de servidor. `String.fromEnvironment` aplica la URL en compilación; reiniciar o hacer hot reload no cambia un binario ya compilado. Sin URL no hay transporte y la búsqueda local sigue disponible. El argumento explícito tiene prioridad sobre el `.env` que carga el helper. VS Code usa el mismo argumento de producción.
 
+Desde `0.9.2+16`, el panel «Ayúdanos a mejorar» y el diálogo «Analítica» incluyen el botón **Política de privacidad**. Abre `https://halladin.cloud/privacidad` en el navegador del sistema sin exigir consentimiento de analítica. Si no se puede abrir un navegador, la app muestra la URL y permite seguir utilizando la búsqueda. No se añadió un SDK ni una vista web. La implementación existe tanto en Android como en iOS; la validación del binario de esta entrega corresponde a Android.
+
 `HttpAnalyticsTransport` exige una base HTTPS sin ruta, query, credenciales ni fragmento. Sólo admite HTTP de loopback/emulador en debug. Resuelve rutas absolutas, por lo que no debe configurarse `/v1` en la base:
 
 | Operación | Método y ruta | Cuerpo / confirmación HTTP 200 |
