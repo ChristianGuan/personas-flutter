@@ -33,4 +33,12 @@ Se conserva el servicio existente: consentimiento explícito, captura desactivad
 
 `analytics_transport_test.dart` prueba el transporte HTTP real contra un servidor local con datos sintéticos: rutas y cabeceras, registro, ACK parcial, reintento con el mismo UUID, borrado y conservación ante 401/429/500 y ACK inválido. Las suites existentes cubren consentimiento, cola offline persistente, deduplicación, revocación y reactivación. Las pruebas locales no envían eventos a producción; la consulta del contrato sólo lee documentación pública.
 
-Resultado del 29-10-2026: análisis estático sin incidencias y 69 pruebas aprobadas con la URL de producción definida. La suite se ejecutó con `--concurrency=1` tras liberar intermediarios Android regenerables por falta de espacio. No se generó una nueva build de tienda ni se realizaron escrituras en producción.
+Resultado del 29-10-2026: análisis estático sin incidencias y 69 pruebas aprobadas con la URL de producción definida. La prueba de producción se omite por defecto y exige activación explícita. Se liberaron cachés regenerables para poder terminar la compilación y arrancar el emulador. Ver [validación de la release con el VPS](release/android-production-api-2026-10-29.md).
+
+Prueba HTTP real desde el Mac, sólo cuando se autorice crear datos sintéticos en producción:
+
+```sh
+./tools/flutter.sh test test/analytics_production_smoke_test.dart --dart-define=PERSONAS_PRODUCTION_SMOKE=true --dart-define=ANALYTICS_API_URL=https://halladin.cloud
+```
+
+Crea un UUID y token nuevos, registra un único evento sintético, verifica ACK y deduplicación, revoca y confirma que no puede volver a enviar. Siempre intenta borrar la instalación en `finally`. Mientras está activa, conserva credenciales de recuperación en `flutter_app/.env.production-smoke-recovery` (permisos 600 e ignorado por Git); sólo borra ese archivo tras confirmar la limpieza. Si falla el borrado, conservar el archivo hasta completar la eliminación autenticada antes de repetir. No imprime el token. Es una prueba del transporte en el host; la evidencia del APK en emulador se documenta por separado.
