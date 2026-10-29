@@ -86,7 +86,7 @@ class AnalysisService : Service() {
             timer.postDelayed(timeout, 6 * 60 * 60 * 1000L)
             runtime.launch(token)
         } catch (_: Exception) {
-            runtime.cancel(token = token, reason = "No se pudo mantener el análisis en segundo plano. Abre Personas y vuelve a intentarlo.")
+            runtime.cancel(token = token, reason = "No se pudo mantener el análisis en segundo plano. Abre Halladin y vuelve a intentarlo.")
             cleanup(); stopSelf()
         }
         return START_NOT_STICKY
@@ -98,7 +98,7 @@ class AnalysisService : Service() {
         .setSmallIcon(co.local.personas.R.drawable.ic_analysis_notification)
         .setContentIntent(open()).setVisibility(Notification.VISIBILITY_PRIVATE)
         .setPublicVersion(Notification.Builder(this, channel).setSmallIcon(co.local.personas.R.drawable.ic_analysis_notification)
-            .setContentTitle("Personas").setContentText("Análisis de tus fotos").build())
+            .setContentTitle("Halladin").setContentText("Análisis de tus fotos").build())
     private fun progress(): Notification {
         val cancel = Intent(this, AnalysisService::class.java).setAction(CANCEL)
             .setData(android.net.Uri.parse("personas://analysis/${runtime.token}"))
@@ -114,7 +114,7 @@ class AnalysisService : Service() {
         cleanup(); stopForeground(STOP_FOREGROUND_REMOVE)
         if (event["cancelled"] != true || event["error"] != null) {
             val error = event["error"] != null
-            val text = if (error) "El análisis se interrumpió. Abre Personas para revisar lo encontrado."
+            val text = if (error) "El análisis se interrumpió. Abre Halladin para revisar lo encontrado."
                 else "${runtime.matches} coincidencias · ${runtime.processed} fotos procesadas. Toca para revisarlas."
             try { getSystemService(NotificationManager::class.java).notify(COMPLETION,
                 builder(doneChannel).setContentTitle(if (error) "Tu análisis necesita revisión" else "Tu análisis ha terminado")

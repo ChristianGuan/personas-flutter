@@ -5,7 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'event.dart';
 
 class AnalyticsState {
-  final bool enabled, deletionPending;
+  final bool enabled, deletionPending, reenableRequested;
   final String? installationId;
   final int deletionAttempts, deletionNextAttempt, consentVersion;
   const AnalyticsState(
@@ -15,6 +15,7 @@ class AnalyticsState {
     this.deletionAttempts,
     this.deletionNextAttempt,
     this.consentVersion,
+    this.reenableRequested,
   );
 }
 
@@ -38,9 +39,10 @@ class AnalyticsStore {
     final db = await f.openDatabase(
       root,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onUpgrade: (db, old, version) async {
           if (old < 2) await _upgradeV2(db);
+          if (old < 3) await _upgradeV3(db);
         },
         singleInstance: false,
         onConfigure: (db) async {
@@ -60,6 +62,7 @@ class AnalyticsStore {
             'CREATE INDEX analytics_due ON analytics_outbox(next_attempt,created_at)',
           );
           await _upgradeV2(db);
+          await _upgradeV3(db);
         },
       ),
     );
@@ -93,6 +96,14 @@ class AnalyticsStore {
     );
   }
 
+  static Future<void> _upgradeV3(DatabaseExecutor db) => db.execute(
+    'ALTER TABLE analytics_state ADD COLUMN reenable_requested INTEGER NOT NULL DEFAULT 0',
+  );
+
+  Future<void> requestReenable() => db
+      .update('analytics_state', {'reenable_requested': 1}, where: 'id=1')
+      .then((_) {});
+
   Future<AnalyticsState> state([DatabaseExecutor? tx]) async {
     final row = (await (tx ?? db).query(
       'analytics_state',
@@ -105,6 +116,7 @@ class AnalyticsStore {
       row['deletion_attempts'] as int,
       row['deletion_next_attempt'] as int,
       row['consent_version'] as int,
+      row['reenable_requested'] == 1,
     );
   }
 
@@ -114,6 +126,7 @@ class AnalyticsStore {
     await tx.update('analytics_state', {
       'enabled': 1,
       'consent_version': 2,
+      'reenable_requested': 0,
       'installation_id': id,
     }, where: 'id=1');
   });
@@ -121,6 +134,7 @@ class AnalyticsStore {
     final current = await state(tx);
     await tx.update('analytics_state', {
       'enabled': 0,
+      'reenable_requested': 0,
       'deletion_pending': current.installationId == null ? 0 : 1,
     }, where: 'id=1');
     await tx.delete('analytics_outbox');

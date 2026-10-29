@@ -58,4 +58,65 @@ void main() {
       await bridge.stream.close();
     },
   );
+
+  testWidgets(
+    'home disclosures explain the flow and require explicit consent at 200 percent text',
+    (tester) async {
+      tester.view.physicalSize = const Size(640, 960);
+      tester.view.devicePixelRatio = 2;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      });
+      Future<void> reveal(Finder target, double delta) async {
+        for (
+          var i = 0;
+          i < 80 && target.hitTestable().evaluate().isEmpty;
+          i++
+        ) {
+          await tester.drag(find.byType(CustomScrollView), Offset(0, delta));
+          await tester.pumpAndSettle();
+        }
+        expect(target.hitTestable(), findsOneWidget);
+      }
+
+      final bridge = TestBridge(), analytics = TestAnalytics();
+      final c = SearchController(bridge, analytics: analytics);
+      await tester.pumpWidget(PersonasApp(controller: c));
+      await tester.pumpAndSettle();
+      expect(find.byType(Switch), findsNothing);
+      await reveal(find.text('Ayúdanos a mejorar'), -180);
+      await tester.tap(find.text('Ayúdanos a mejorar'));
+      await tester.pumpAndSettle();
+      expect(analytics.enabled, false);
+      await reveal(find.byType(Switch), -180);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(analytics.enabled, true);
+      await reveal(find.text('Ayúdanos a mejorar'), 180);
+      await tester.tap(find.text('Ayúdanos a mejorar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Switch), findsNothing);
+      expect(analytics.enabled, true);
+      await reveal(find.text('Así encuentras tus fotos'), 180);
+      await tester.tap(find.text('Así encuentras tus fotos'));
+      await tester.pumpAndSettle();
+      for (final title in [
+        'Elige a tu persona',
+        'Elige dónde buscar',
+        'Reúne tus favoritas',
+      ]) {
+        await reveal(find.text(title), -180);
+        expect(find.text(title), findsOneWidget);
+      }
+      expect(c.page, StepPage.home);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      analytics.dispose();
+      await bridge.stream.close();
+    },
+  );
 }

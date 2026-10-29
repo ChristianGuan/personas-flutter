@@ -54,6 +54,8 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
   AnalyticsStore? _store;
   AnalyticsSync? _sync;
   final TokenVault _vault;
+  final AnalyticsTransport? _transport;
+  bool _reenableRequested = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivity;
   Timer? _timer;
   bool _enabled = false,
@@ -69,15 +71,22 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
   (String, Payload)? _restoredTerminal;
   bool get renewalRequired => _renewalRequired;
   String status = '';
-  AnalyticsService({TokenVault? vault}) : _vault = vault ?? SecureTokenVault();
+  AnalyticsService({
+    TokenVault? vault,
+    AnalyticsTransport? transport,
+    AnalyticsStore? store,
+  }) : _vault = vault ?? SecureTokenVault(),
+       _transport = transport,
+       _store = store;
   @override
   bool get enabled => _enabled && !_renewalRequired;
   bool get pendingDeletion => _pending;
+  bool get consentRequested => enabled || _reenableRequested;
   bool get ready => _ready;
   bool get changing => _changing;
   Future<void> initialize() async {
     try {
-      _store = await AnalyticsStore.open();
+      _store ??= await AnalyticsStore.open();
       final state = await _store!.state();
       _enabled = state.enabled;
       _renewalRequired = state.enabled && state.consentVersion < 2;
@@ -87,10 +96,14 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
         status =
             'No estamos recogiendo datos nuevos. Revisa este mensaje antes de decidir si quieres seguir compartiendo.';
       _pending = state.deletionPending;
+      _reenableRequested = state.reenableRequested;
       _sync = AnalyticsSync(
         _store!,
         _vault,
-        analyticsApi.isEmpty ? null : HttpAnalyticsTransport(analyticsApi),
+        _transport ??
+            (analyticsApi.isEmpty
+                ? null
+                : HttpAnalyticsTransport(analyticsApi)),
       );
       _ready = true;
       try {
@@ -129,10 +142,13 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
   Future<void> setConsent(bool value) async {
     if (!_ready ||
         _changing ||
-        value == enabled && !_pending && !_renewalRequired ||
-        (value && _pending))
+        value == enabled &&
+            value == consentRequested &&
+            !_pending &&
+            !_renewalRequired)
       return;
     _changing = true;
+    var saved = false;
     // Stop capture and abort current foreground HTTP before awaiting any writes.
     if (!value) {
       _enabled = false;
@@ -144,24 +160,36 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
     try {
       if (value) {
         final previous = await _store!.state();
-        final id = previous.installationId ?? randomUuid();
-        if (previous.installationId == null) {
-          final token = randomToken();
-          await _vault.write(token);
-          if (await _vault.read() != token)
+        if (previous.deletionPending) {
+          await _store!.requestReenable();
+          _reenableRequested = true;
+          _pending = true;
+          await _store!.retryDeletion();
+          status =
+              'Guardamos tu elección. Volverás a compartir datos cuando termine el borrado anterior.';
+        } else {
+          final id = previous.installationId ?? randomUuid();
+          if (previous.installationId == null) {
+            final token = randomToken();
+            await _vault.write(token);
+            if (await _vault.read() != token)
+              throw StateError('Credential storage unavailable');
+          } else if (await _vault.read() == null) {
             throw StateError('Credential storage unavailable');
-        } else if (await _vault.read() == null) {
-          throw StateError('Credential storage unavailable');
+          }
+          await _store!.enable(id);
+          _enabled = true;
+          _renewalRequired = false;
+          status =
+              'Ya estás compartiendo datos de uso. Puedes desactivarlo cuando quieras.';
+          foreground();
+          if (_reconciliationKnown) reconcileSearch(_activeNativeSearch);
+          _pending = false;
+          _reenableRequested = false;
         }
-        await _store!.enable(id);
-        _enabled = true;
-        _renewalRequired = false;
-        status =
-            'Ya estás compartiendo datos de uso. Puedes desactivarlo cuando quieras.';
-        foreground();
-        if (_reconciliationKnown) reconcileSearch(_activeNativeSearch);
       } else {
         await _store!.revoke();
+        _reenableRequested = false;
         _renewalRequired = false;
         _pending = (await _store!.state()).deletionPending;
         try {
@@ -171,13 +199,14 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
             'Dejaste de compartir datos y borramos los pendientes. Completaremos el borrado de los datos enviados cuando haya conexión.';
       }
       if (_enabled || _pending) await _schedule();
-      unawaited(flush());
+      saved = true;
     } catch (_) {
       status = 'No pudimos guardar tu elección. Vuelve a intentarlo.';
     } finally {
       _changing = false;
       if (!_disposed) notifyListeners();
     }
+    if (saved) unawaited(flush());
   }
 
   @override
@@ -251,16 +280,26 @@ class AnalyticsService extends ChangeNotifier implements AnalyticsSink {
     if (_store == null) return;
     try {
       final state = await _store!.state();
-      if (_pending && !state.deletionPending) {
-        _pending = false;
+      if (_changing) return;
+      final wasPending = _pending;
+      final changed =
+          _pending != state.deletionPending ||
+          _reenableRequested != state.reenableRequested;
+      _pending = state.deletionPending;
+      _reenableRequested = state.reenableRequested;
+      if (!_pending && _reenableRequested && !_disposed) {
+        await setConsent(true);
+        return;
+      }
+      if (wasPending && !_pending) {
         status =
             'Se eliminaron los datos que habías compartido. Sólo se conservan estadísticas generales.';
-        // Keep token until next consent; avoids a race with a finishing background delete.
         try {
           await Workmanager().cancelByUniqueName(analyticsTask);
         } catch (_) {}
-        if (!_disposed) notifyListeners();
+        if (enabled || _reenableRequested) await _schedule();
       }
+      if (changed && !_disposed) notifyListeners();
     } catch (_) {}
   }
 

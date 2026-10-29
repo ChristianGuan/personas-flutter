@@ -1,4 +1,4 @@
-# Personas · Flutter
+# Halladin · Flutter
 
 App Android/iOS de búsqueda local de fotografías por persona. Repositorio independiente de [la API y el dashboard](https://github.com/ChristianGuan/personas-api-dashboard). El reconocimiento y las fotos permanecen en el teléfono; la analítica requiere consentimiento.
 
@@ -43,3 +43,11 @@ Para iOS, prepara OpenCV con `python3 tools/setup_opencv_ios.py`; configura tu e
 Las pruebas Android instrumentadas necesitan un dispositivo/emulador. `.env`, SDKs, dependencias descargadas y resultados de compilación no se versionan.
 
 Separado desde `busqueda_fotos_app`, commit móvil `2d91909`. El historial del repositorio anterior permanece disponible como referencia.
+
+## Preparación Android para tienda
+
+Ver [firma release, target SDK 36 y validación de 16 KB](docs/release/android.md). La upload key y `key.properties` son locales, no se suben a Git. La alineación estática no sustituye una prueba de ejecución en un dispositivo de 16 KB.
+
+Ver también [pruebas funcionales y privacidad Android](docs/release/android-functional-privacy-2026-10-28.md): permisos release, segundo plano, cancelación y sincronización con API aislada.
+
+La [prueba de interrupción activa y recuperación del 29-10](docs/release/android-active-interruption-2026-10-29.md) está aprobada en una nueva release QA; conserva el último checkpoint cada 25 fotos.

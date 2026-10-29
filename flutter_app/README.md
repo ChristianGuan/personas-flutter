@@ -107,7 +107,7 @@ Faltan evaluación de precisión con álbumes familiares reales, índice persist
 
 ## Analítica opcional
 
-Desactivada por defecto, cola SQLite y sincronización con API propia sin enviar fotos ni datos faciales. Configurar `--dart-define=ANALYTICS_API_URL=https://...`; no incluir claves administrativas. Ver [privacidad y ejecución](../docs/analytics-privacy.md), [Backend](https://github.com/ChristianGuan/personas-api-dashboard/blob/main/Backend/README.md) y [SDD](../specs/003-optional-analytics/spec.md).
+Desactivada por defecto, cola SQLite y sincronización con API propia sin enviar fotos ni datos faciales. Configurar `--dart-define=ANALYTICS_API_URL=https://...`; no incluir claves administrativas. Ver [privacidad y ejecución](../docs/analytics-privacy.md), [Backend](../Backend/README.md) y [SDD](../specs/003-optional-analytics/spec.md).
 
 ## URL de la API y configuración local
 
@@ -126,4 +126,4 @@ Si el archivo no existe, copia `.env.example` a `.env`. `tools/flutter.sh run` y
 
 Con Flutter directamente, añade `--dart-define-from-file=.env` desde `flutter_app/`. Al cambiar la URL es necesario recompilar/reiniciar la ejecución; hot reload no actualiza estos valores. Los Quick Tunnels cambian de URL al recrearlos. `.tooling/public-api.env` es una referencia auxiliar; la fuente usada para compilar la app es `flutter_app/.env`.
 
-La BD se configura en `Backend/.env` del repositorio independiente `personas-api-dashboard`: `DATABASE_URL` para Node; `POSTGRES_DB`, `POSTGRES_USER` y `POSTGRES_PASSWORD` para Docker. `HOST` y `PORT` definen la API local y `ADMIN_TOKEN` protege las métricas. Nunca copies credenciales de BD ni el token administrador al `.env` de Flutter, porque sus valores se incluyen en el binario. Los archivos `.env` están ignorados por Git.
+La BD se configura exclusivamente en `Backend/.env`: `DATABASE_URL` para Node; `POSTGRES_DB`, `POSTGRES_USER` y `POSTGRES_PASSWORD` para Docker. `HOST` y `PORT` definen la API local y `ADMIN_TOKEN` protege las métricas. Nunca copies credenciales de BD ni el token administrador al `.env` de Flutter, porque sus valores se incluyen en el binario. Los archivos `.env` están ignorados por Git.

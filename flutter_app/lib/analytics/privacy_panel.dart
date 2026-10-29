@@ -3,20 +3,26 @@ import 'service.dart';
 
 class AnalyticsPrivacyPanel extends StatelessWidget {
   final AnalyticsService service;
-  const AnalyticsPrivacyPanel({super.key, required this.service});
+  final bool showHeading;
+  const AnalyticsPrivacyPanel({
+    super.key,
+    required this.service,
+    this.showHeading = true,
+  });
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: service,
     builder: (context, _) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Ayúdanos a mejorar',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
+        if (showHeading)
+          Text(
+            'Ayúdanos a mejorar',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
         const SizedBox(height: 8),
         const Text(
-          'Si aceptas, compartiremos cómo usas la app, cuánto tardan tus búsquedas, cuántas fotos analizas y cuántas coincidencias aparecen. También compartiremos si usas Android o iPhone, la versión de la app, los problemas de funcionamiento o envío y las valoraciones que elijas dar. Esto nos ayuda a mejorar Personas.',
+          'Si aceptas, compartiremos cómo usas la app, cuánto tardan tus búsquedas, cuántas fotos analizas y cuántas coincidencias aparecen. También compartiremos si usas Android o iPhone, la versión de la app, los problemas de funcionamiento o envío y las valoraciones que elijas dar. Esto nos ayuda a mejorar Halladin.',
         ),
         const SizedBox(height: 8),
         const Text(
@@ -36,9 +42,8 @@ class AnalyticsPrivacyPanel extends StatelessWidget {
           subtitle: const Text(
             'Este permiso es distinto al acceso a tus fotos.',
           ),
-          value: service.enabled,
-          onChanged:
-              !service.ready || service.changing || service.pendingDeletion
+          value: service.consentRequested,
+          onChanged: !service.ready || service.changing
               ? null
               : (value) => service.setConsent(value),
         ),
@@ -48,8 +53,10 @@ class AnalyticsPrivacyPanel extends StatelessWidget {
             child: const Text('Dejar de compartir y borrar mis datos'),
           ),
         if (service.pendingDeletion)
-          const Text(
-            'Esperamos conexión para completar el borrado. No estamos recogiendo ni enviando datos de uso.',
+          Text(
+            service.consentRequested
+                ? 'Tu elección está guardada. La analítica se reactivará al terminar el borrado anterior; mientras tanto no recogemos ni enviamos datos de uso.'
+                : 'Esperamos conexión para completar el borrado. No estamos recogiendo ni enviando datos de uso.',
           ),
         if (service.status.isNotEmpty) Text(service.status),
         if (analyticsApi.isEmpty)

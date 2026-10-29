@@ -108,6 +108,26 @@ void main() {
       expect((await store.state()).installationId, isNull);
     },
   );
+  test('v2 migration preserves consent identity and pending events', () async {
+    final id = randomUuid();
+    await store.enable(id);
+    await store.add('session_started', {});
+    await store.db.execute(
+      'ALTER TABLE analytics_state DROP COLUMN reenable_requested',
+    );
+    await store.db.setVersion(2);
+    await store.close();
+    store = await AnalyticsStore.open(
+      factory: databaseFactoryFfi,
+      path: '${directory.path}/outbox.db',
+    );
+    final state = await store.state();
+    expect(state.enabled, true);
+    expect(state.installationId, id);
+    expect(state.consentVersion, 2);
+    expect(state.reenableRequested, false);
+    expect(await store.db.query('analytics_outbox'), hasLength(1));
+  });
   test('partial acknowledgements preserve other rows and back off', () async {
     await store.enable(randomUuid());
     await store.add('session_started', {});

@@ -22,3 +22,7 @@ dev_dependencies:
   sqflite_common_ffi: ^2.4.0
 flutter:
   uses-material-design: true
+  assets:
+    - assets/brand/home-reference.png
+    - assets/brand/lamp-gold-transparent.png
+    - assets/brand/how-it-works-reference.png

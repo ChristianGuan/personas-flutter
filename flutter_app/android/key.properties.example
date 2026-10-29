@@ -1,0 +1,7 @@
+# Copiar a key.properties al usar una upload key existente.
+# storeFile es relativo a flutter_app/android/ (o una ruta absoluta).
+# No subir key.properties ni el keystore a Git.
+storeFile=../../.tooling/signing/personas-upload.jks
+storePassword=REEMPLAZAR
+keyAlias=personas-upload
+keyPassword=REEMPLAZAR

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart' hide SearchController;
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/services.dart';
 import 'native_bridge.dart';
 import 'search_controller.dart';
 import 'photo_widgets.dart';
@@ -17,13 +18,23 @@ class PersonasApp extends StatelessWidget {
   const PersonasApp({super.key, this.controller});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Personas',
+    title: 'Halladín',
     debugShowCheckedModeBanner: false,
     locale: const Locale('es'),
     supportedLocales: const [Locale('es'), Locale('en')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     theme: personasTheme(Brightness.light),
-    darkTheme: personasTheme(Brightness.dark),
+    themeMode: ThemeMode.light,
+    builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: HalladinColors.ivory,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: child ?? const SizedBox.shrink(),
+    ),
     home: SearchPage(controller: controller),
   );
 }
@@ -225,8 +236,8 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
         content: SingleChildScrollView(
           child: Text(
             c.platform == 'ios'
-                ? 'El selector muestra la fototeca y las imágenes de iCloud Fotos. Para Google Drive usa Archivos. Desde Google Fotos puedes compartir imágenes con Personas si has habilitado la extensión. Las fotos remotas necesitan conexión y descarga.'
-                : 'Activa Google Fotos como proveedor del selector si tu teléfono lo permite. También puedes seleccionar fotos en Google Fotos y usar Compartir → Personas. Para Google Drive usa Archivos. Las fotos remotas necesitan conexión y descarga.',
+                ? 'El selector muestra la fototeca y las imágenes de iCloud Fotos. Para Google Drive usa Archivos. Desde Google Fotos puedes compartir imágenes con Halladin si has habilitado la extensión. Las fotos remotas necesitan conexión y descarga.'
+                : 'Activa Google Fotos como proveedor del selector si tu teléfono lo permite. También puedes seleccionar fotos en Google Fotos y usar Compartir → Halladin. Para Google Drive usa Archivos. Las fotos remotas necesitan conexión y descarga.',
           ),
         ),
         actions: [
@@ -269,17 +280,47 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     );
   }
 
+  Widget searchHeading(String title, String subtitle) => HalladinHeader(
+    title: c.page == StepPage.reference || c.page == StepPage.albums
+        ? 'Nueva búsqueda'
+        : c.analysing || c.cancelling
+        ? title
+        : c.cancelled
+        ? title
+        : 'Resultados',
+    subtitle: subtitle,
+    step: c.page == StepPage.reference
+        ? 1
+        : c.page == StepPage.albums
+        ? 2
+        : 3,
+  );
+
   Widget heading(String title, String subtitle) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(title, style: Theme.of(context).textTheme.headlineMedium),
       const SizedBox(height: 8),
-      Text(subtitle),
+      Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
     ],
   );
   Widget section(Widget child) => SliverPadding(
-    padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-    sliver: SliverToBoxAdapter(child: child),
+    padding: child is HalladinHeader
+        ? EdgeInsets.zero
+        : const EdgeInsets.fromLTRB(20, 12, 20, 12),
+    sliver: SliverToBoxAdapter(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: SizedBox(width: double.infinity, child: child),
+        ),
+      ),
+    ),
   );
   Widget contextSummary() {
     final searching = c.page == StepPage.analysis || c.page == StepPage.results;
@@ -324,7 +365,8 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget backgroundNote() => BackgroundNote(
+  Widget backgroundNote({bool showHeading = true}) => BackgroundNote(
+    showHeading: showHeading,
     mode: c.backgroundMode,
     enabled: c.notificationsEnabled,
     asking: c.askingNotifications,
@@ -332,22 +374,62 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     onEnable: () => c.requestNotifications(),
   );
 
-  Widget referencePicker() => Wrap(
-    spacing: 12,
-    runSpacing: 12,
-    children: [
-      OutlinedButton.icon(
-        onPressed: c.blocked ? null : () => c.pickReference(),
-        icon: const Icon(Icons.add_photo_alternate_outlined),
-        label: Text(
-          c.reference == null ? 'Elegir foto de referencia' : 'Cambiar foto',
+  Future<void> scanSpeedPopup() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      scrollable: true,
+      title: const Text('Tu primer escaneo'),
+      content: const Text(ScanSpeedNote.message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Entendido'),
         ),
+      ],
+    ),
+  );
+
+  Future<void> backgroundPopup() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => ListenableBuilder(
+      listenable: c,
+      builder: (context, _) => AlertDialog(
+        scrollable: true,
+        title: const Text('Puedes cambiar de app'),
+        content: backgroundNote(showHeading: false),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Entendido'),
+          ),
+        ],
       ),
-      TextButton(
-        onPressed: c.blocked ? null : () => cloud(reference: true),
-        child: const Text('Fotos de la nube'),
+    ),
+  );
+
+  Widget analysisInformation() => Wrap(
+    spacing: 8,
+    runSpacing: 4,
+    children: [
+      TextButton.icon(
+        onPressed: scanSpeedPopup,
+        icon: const Icon(Icons.speed_outlined),
+        label: const Text('Tu primer escaneo'),
       ),
+      if (c.backgroundMode.isNotEmpty)
+        TextButton.icon(
+          onPressed: backgroundPopup,
+          icon: const Icon(Icons.info_outline),
+          label: const Text('Puedes cambiar de app'),
+        ),
     ],
+  );
+
+  Widget referencePicker() => HalladinReferencePicker(
+    hasReference: c.reference != null,
+    enabled: !c.blocked,
+    onPick: () => c.pickReference(),
+    onCloud: () => cloud(reference: true),
   );
 
   List<Widget> content() {
@@ -363,66 +445,96 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     switch (c.page) {
       case StepPage.home:
         return [
+          SliverToBoxAdapter(
+            child: ColoredBox(
+              color: HalladinColors.ivory,
+              child: Column(
+                children: [
+                  const CustomPaint(
+                    painter: HalladinLandingBackdrop(),
+                    child: Column(
+                      children: [
+                        HomeIntro(),
+                        Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: HalladinHomeArtwork(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                    child: HalladinPanel(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: HalladinColors.focusSurface,
+                            ),
+                            child: const Icon(
+                              Icons.lock_rounded,
+                              color: HalladinColors.brightBlue,
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Privado por diseño',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Tus fotos se procesan en tu teléfono.',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: HalladinColors.muted,
+                                        fontSize: 14,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           section(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    Text(
-                      'Personas',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    Chip(
-                      avatar: const Icon(Icons.lock_outline, size: 18),
-                      label: const Text('En tu dispositivo'),
-                      side: BorderSide.none,
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainer,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                const HomeIntro(),
-                const SizedBox(height: 28),
-                Text(
-                  'Así encuentras tus fotos',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                const FlowStepRow(
-                  1,
-                  'Elige a tu persona',
-                  'Toca su rostro en una foto de referencia.',
-                ),
-                const FlowStepRow(
-                  2,
-                  'Elige dónde buscar',
-                  'Usa tu álbum o reúne las fotos que quieras.',
-                ),
-                const FlowStepRow(
-                  3,
-                  'Reúne tus favoritas',
-                  'Revisa tus coincidencias y elige cuáles compartir.',
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Tus fotos se analizan en tu dispositivo, sin subirlas a servidores.',
-                ),
-              ],
+            const HalladinDisclosure(
+              title: 'Así encuentras tus fotos',
+              subtitle: 'Tres pasos para encontrar y compartir tus momentos',
+              icon: Icons.auto_stories_outlined,
+              child: HalladinHowTo(),
             ),
           ),
           if (analytics != null)
-            section(AnalyticsPrivacyPanel(service: analytics!)),
+            section(
+              HalladinDisclosure(
+                title: 'Ayúdanos a mejorar',
+                subtitle: 'Opcional · Tú decides si compartes datos de uso',
+                icon: Icons.insights_outlined,
+                child: AnalyticsPrivacyPanel(
+                  service: analytics!,
+                  showHeading: false,
+                ),
+              ),
+            ),
         ];
       case StepPage.reference:
         return [
           section(
-            heading(
+            searchHeading(
               reference == null
                   ? 'Una foto para empezar'
                   : '¿A quién quieres encontrar?',
@@ -442,7 +554,21 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               ),
             ),
           if (reference != null)
-            section(ReferenceView(controller: c, reference: reference)),
+            section(
+              HalladinPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '1. Foto de referencia',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    ReferenceView(controller: c, reference: reference),
+                  ],
+                ),
+              ),
+            ),
           if (reference != null)
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -499,16 +625,16 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                 children: [
                   contextSummary(),
                   const SizedBox(height: 16),
-                  OutlinedButton(
+                  HalladinSecondaryAction(
+                    title: 'Añadir otra referencia de esta persona',
+                    subtitle:
+                        'Una foto de la misma persona con distinta pose o iluminación puede ayudar.',
+                    icon: Icons.person_add_alt_1_outlined,
                     onPressed: c.blocked
                         ? null
                         : () => c.pickReference(append: true),
-                    child: const Text('Añadir otra referencia de esta persona'),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Una foto de la misma persona con distinta pose o iluminación puede ayudar.',
-                  ),
                   ...c.examples.indexed.map(
                     (entry) => ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -538,47 +664,32 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
       case StepPage.albums:
         return [
           section(
-            heading(
+            searchHeading(
               '¿Dónde quieres buscar?',
               'Elige tu álbum o reúne las fotos donde quieres buscar.',
             ),
           ),
-          section(
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                FilledButton.tonal(
-                  onPressed: () => c.pickPhotos(),
-                  child: Text(
-                    c.photos.isEmpty ? 'Elegir fotos' : 'Añadir más fotos',
-                  ),
-                ),
-                OutlinedButton(
-                  onPressed: () => c.pickPhotos(files: true),
-                  child: const Text('Elegir desde Archivos'),
-                ),
-                TextButton(
-                  onPressed: () => cloud(),
-                  child: const Text('Fotos de la nube'),
-                ),
-                if (c.photos.isNotEmpty)
-                  TextButton(
-                    onPressed: c.clearPhotos,
-                    child: const Text('Vaciar conjunto'),
-                  ),
-              ],
-            ),
-          ),
-          section(const ScanSpeedNote()),
-          if (c.backgroundMode.isNotEmpty) section(backgroundNote()),
-          if (c.photos.isNotEmpty)
+          if (c.reference != null && c.chosen != null)
             section(
-              Text(
-                '${c.photos.length} fotos · ${c.album?.name ?? 'Selección individual'}',
-                style: Theme.of(context).textTheme.titleMedium,
+              HalladinSelectedReference(
+                photo: NativePhoto(
+                  bridge: c.bridge,
+                  id: c.reference!.image,
+                  crop: c.chosen!.crop,
+                  label: 'Tu persona elegida',
+                ),
+                referenceCount: c.examples.length + 1,
+                onChange: c.blocked
+                    ? null
+                    : () => c.navigate(StepPage.reference),
               ),
             ),
+          section(
+            Text(
+              '2. Álbum a revisar',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ),
           if (c.access == 'none')
             section(
               EmptyMessage(
@@ -625,26 +736,11 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               EmptyMessage(
                 'No hay álbumes accesibles',
                 'Elige fotos individuales o revisa las fotos autorizadas.',
-                action: 'Elegir fotos',
+                action: 'Selecciona una a una',
                 onAction: () => c.pickPhotos(),
               ),
             ),
-          if (c.access != 'none')
-            section(
-              Wrap(
-                spacing: 12,
-                children: [
-                  TextButton(
-                    onPressed: () => c.refreshAlbums(),
-                    child: const Text('Actualizar'),
-                  ),
-                  TextButton(
-                    onPressed: () => c.settings(),
-                    child: const Text('Ajustes de acceso'),
-                  ),
-                ],
-              ),
-            ),
+
           photoGrid(albums.length, (index) {
             final album = albums[index], active = c.album?.id == album.id;
             return Semantics(
@@ -698,12 +794,68 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               ),
             );
           }, album: true),
+          if (c.access != 'none')
+            section(
+              Wrap(
+                spacing: 12,
+                children: [
+                  TextButton(
+                    onPressed: () => c.refreshAlbums(),
+                    child: const Text('Actualizar'),
+                  ),
+                  TextButton(
+                    onPressed: () => c.settings(),
+                    child: const Text('Ajustes de acceso'),
+                  ),
+                ],
+              ),
+            ),
+
+          if (c.photos.isNotEmpty)
+            section(
+              Text(
+                '${c.photos.length} fotos · ${c.album?.name ?? 'Selección individual'}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          section(
+            Text(
+              'Otras formas de elegir tus fotos',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          section(
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.tonal(
+                  onPressed: c.blocked ? null : () => c.pickPhotos(),
+                  child: Text('Selecciona una a una'),
+                ),
+                OutlinedButton(
+                  onPressed: c.blocked ? null : () => c.pickPhotos(files: true),
+                  child: const Text('Elegir desde Archivos'),
+                ),
+                TextButton(
+                  onPressed: c.blocked ? null : () => cloud(),
+                  child: const Text('Fotos de la nube'),
+                ),
+                if (c.photos.isNotEmpty)
+                  TextButton(
+                    onPressed: c.clearPhotos,
+                    child: const Text('Vaciar conjunto'),
+                  ),
+              ],
+            ),
+          ),
+          section(analysisInformation()),
         ];
       case StepPage.analysis:
       case StepPage.results:
         return [
           section(
-            heading(
+            searchHeading(
               c.cancelling
                   ? 'Deteniendo la búsqueda'
                   : c.analysing
@@ -718,13 +870,20 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                   : 'Revisa tus fotos y elige las que quieres compartir.',
             ),
           ),
-          section(contextSummary()),
+          if (!c.analysing && !c.cancelling && !c.cancelled)
+            section(
+              Text(
+                'Posibles coincidencias',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+            ),
+          section(HalladinPanel(child: contextSummary())),
           if (c.analysing) ...[
             section(
               ScanProgress(processed: c.processed, total: c.photos.length),
             ),
-            section(const ScanSpeedNote()),
-            if (c.backgroundMode.isNotEmpty) section(backgroundNote()),
+            section(analysisInformation()),
           ],
           section(
             Text(
@@ -732,6 +891,7 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               style: Theme.of(context).textTheme.headlineMedium,
             ),
           ),
+          photoGrid(results.length, (index) => resultTile(results[index])),
           if (c.analytics?.enabled == true && c.ratingAvailable)
             section(
               Column(
@@ -817,15 +977,6 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  if (c.results.isNotEmpty)
-                    TextButton(
-                      onPressed: c.toggleAll,
-                      child: Text(
-                        c.selected.length == c.results.length
-                            ? 'Deseleccionar todas'
-                            : 'Seleccionar todas',
-                      ),
-                    ),
                   PopupMenuButton<String>(
                     tooltip: 'Opciones de búsqueda',
                     onSelected: (choice) {
@@ -854,7 +1005,6 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                 ],
               ),
             ),
-          photoGrid(results.length, (index) => resultTile(results[index])),
           if (!c.analysing && c.pending.isNotEmpty) ...[
             section(
               heading(
@@ -922,7 +1072,13 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
             mainAxisExtent: album
-                ? width / 1.25 + (large ? 248 : 136)
+                ? width / 1.25 +
+                      (large
+                          ? math.max(
+                              320,
+                              MediaQuery.textScalerOf(context).scale(16) * 10,
+                            )
+                          : 152)
                 : width + (large ? 100 : 64),
           ),
           delegate: SliverChildBuilderDelegate(
@@ -954,6 +1110,15 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
             ),
           ),
           CheckboxListTile(
+            checkboxShape: const CircleBorder(),
+            activeColor: HalladinColors.turquoise,
+            checkColor: HalladinColors.night,
+            side: BorderSide(
+              color: selected
+                  ? HalladinColors.turquoise
+                  : HalladinColors.night.withValues(alpha: .35),
+              width: 1.5,
+            ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             controlAffinity: ListTileControlAffinity.leading,
             value: selected,
@@ -1004,7 +1169,7 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
             StepPage.home => FilledButton.icon(
               onPressed: () => c.navigate(StepPage.reference),
               icon: const Icon(Icons.person_search_outlined),
-              label: const Text('Buscar a una persona'),
+              label: const Text('Nueva búsqueda'),
             ),
             StepPage.reference => FilledButton(
               onPressed: c.chosen == null || c.blocked
@@ -1039,54 +1204,206 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
             ),
           };
     return Material(
-      elevation: 4,
+      elevation: c.page == StepPage.home ? 0 : 12,
+      shadowColor: HalladinColors.night.withValues(alpha: .18),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(c.page == StepPage.home ? 0 : 24),
+        ),
+        side: BorderSide(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: .5),
+        ),
+      ),
       color: Theme.of(context).colorScheme.surface,
       child: MotionSize(
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              c.page == StepPage.results ? 4 : 12,
+              20,
+              c.page == StepPage.results ? 4 : 12,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (c.page == StepPage.results && c.selected.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Semantics(
-                      label:
-                          '${c.selected.length} ${c.selected.length == 1 ? 'foto seleccionada' : 'fotos seleccionadas'}',
-                      child: ExcludeSemantics(
-                        child: AnimatedSwitcher(
-                          duration: PersonasMotion.duration(context),
-                          layoutBuilder: (current, previous) => Stack(
-                            alignment: Alignment.centerLeft,
-                            children: [
-                              ...previous.map(
-                                (child) => ExcludeSemantics(child: child),
+                if (c.page == StepPage.results && c.results.isNotEmpty)
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final all = c.selected.length == c.results.length;
+                      final label = all
+                          ? 'Deseleccionar todas'
+                          : 'Seleccionar todas';
+                      final compact =
+                          MediaQuery.textScalerOf(context).scale(16) > 22 ||
+                          constraints.maxWidth < 260;
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: compact ? 4 : 10),
+                        child: Row(
+                          children: [
+                            const Spacer(),
+                            Expanded(
+                              flex: 3,
+                              child: Tooltip(
+                                message: label,
+                                child: TextButton(
+                                  onPressed: c.blocked ? null : c.toggleAll,
+                                  style: TextButton.styleFrom(
+                                    minimumSize: const Size(48, 44),
+                                    foregroundColor: all
+                                        ? HalladinColors.tealInk
+                                        : HalladinColors.night,
+                                    backgroundColor: all
+                                        ? HalladinColors.selectionSurface
+                                        : Colors.transparent,
+                                    disabledForegroundColor:
+                                        HalladinColors.disabledInk,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 4,
+                                    ),
+                                    textStyle: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(
+                                          fontSize: 13,
+                                          height: 1.2,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                  child: Text(
+                                    compact
+                                        ? (all ? 'Quitar' : 'Todas')
+                                        : label,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
                               ),
-                              if (current != null) current,
-                            ],
-                          ),
-                          child: Text(
-                            '${c.selected.length} ${c.selected.length == 1 ? 'foto' : 'fotos'}',
-                            key: ValueKey(c.selected.length),
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
+                            ),
+                            Expanded(
+                              child: Semantics(
+                                label:
+                                    '${c.selected.length} ${c.selected.length == 1 ? 'foto seleccionada' : 'fotos seleccionadas'}',
+                                child: ExcludeSemantics(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 8),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        '${c.selected.length} ${c.selected.length == 1 ? 'foto' : 'fotos'}',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelLarge,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 if ((c.blocked && c.page == StepPage.reference) || c.picking)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 8),
                     child: LinearProgressIndicator(),
                   ),
-                action,
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: FilledButtonTheme(
+                      data: FilledButtonThemeData(
+                        style: Theme.of(context).filledButtonTheme.style
+                            ?.copyWith(
+                              textStyle: WidgetStatePropertyAll(
+                                Theme.of(
+                                  context,
+                                ).textTheme.titleLarge?.copyWith(
+                                  fontSize:
+                                      c.page == StepPage.results &&
+                                          MediaQuery.textScalerOf(
+                                                context,
+                                              ).scale(16) >
+                                              22
+                                      ? 14
+                                      : 20,
+                                  height: 1.15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              padding: WidgetStatePropertyAll(
+                                c.page == StepPage.results
+                                    ? const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 8,
+                                      )
+                                    : const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                        vertical: 16,
+                                      ),
+                              ),
+                              minimumSize: const WidgetStatePropertyAll(
+                                Size(48, 60),
+                              ),
+                              shape: WidgetStatePropertyAll(
+                                RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    HalladinSurfaces.buttonRadius,
+                                  ),
+                                ),
+                              ),
+                              backgroundBuilder: (context, states, child) =>
+                                  states.contains(WidgetState.disabled)
+                                  ? child ?? const SizedBox.shrink()
+                                  : DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: HalladinSurfaces.action,
+                                        border: Border.all(
+                                          color: HalladinColors.gold,
+                                          width: 1.5,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          HalladinSurfaces.buttonRadius,
+                                        ),
+                                      ),
+                                      child: child,
+                                    ),
+                            ),
+                      ),
+                      child: SizedBox(width: double.infinity, child: action),
+                    ),
+                  ),
+                ),
+                if (c.page == StepPage.reference &&
+                    c.photos.isNotEmpty &&
+                    !c.canCancelPreparation &&
+                    !c.picking)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: HalladinSecondaryAction(
+                      compact: true,
+                      title: 'Cambiar álbum',
+                      icon: Icons.photo_album_outlined,
+                      onPressed: c.blocked || c.chosen == null
+                          ? null
+                          : () => c.navigate(StepPage.albums),
+                    ),
+                  ),
                 if (c.page == StepPage.reference && c.chosen == null)
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
-                    child: Text('Elige un rostro para continuar'),
+                    child: Text(
+                      'Elige un rostro para continuar',
+                      textAlign: TextAlign.center,
+                    ),
                   ),
               ],
             ),
@@ -1103,33 +1420,40 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
       if (!didPop) unawaited(back());
     },
     child: Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: c.page == StepPage.home
-            ? null
-            : IconButton(
-                tooltip: 'Volver',
-                onPressed: back,
-                icon: const Icon(Icons.arrow_back),
-              ),
-        title: c.page == StepPage.home
-            ? null
-            : Text(
-                c.page == StepPage.reference
-                    ? 'Tu persona'
-                    : c.page == StepPage.albums
-                    ? 'Tus fotos'
-                    : 'Tus momentos',
-              ),
-        actions: [
-          if (analytics != null)
-            TextButton.icon(
-              onPressed: analyticsDialog,
-              icon: const Icon(Icons.privacy_tip_outlined),
-              label: const Text('Analítica'),
+      backgroundColor: c.page == StepPage.home ? HalladinColors.night : null,
+      appBar: c.page == StepPage.home
+          ? null
+          : AppBar(
+              backgroundColor: HalladinColors.night,
+              automaticallyImplyLeading: false,
+              leading: c.page == StepPage.home
+                  ? null
+                  : IconButton(
+                      tooltip: 'Volver',
+                      onPressed: back,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+              title: c.page == StepPage.home
+                  ? null
+                  : Text(
+                      c.page == StepPage.reference
+                          ? 'Tu persona'
+                          : c.page == StepPage.albums
+                          ? 'Tus fotos'
+                          : 'Tus momentos',
+                    ),
+              actions: [
+                if (analytics != null)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: HalladinColors.ivory,
+                    ),
+                    onPressed: analyticsDialog,
+                    icon: const Icon(Icons.privacy_tip_outlined),
+                    label: const Text('Analítica'),
+                  ),
+              ],
             ),
-        ],
-      ),
       body: SafeArea(
         child: AnimatedSwitcher(
           duration: PersonasMotion.duration(context),
@@ -1154,24 +1478,24 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               if (current != null) current,
             ],
           ),
-          child: CustomScrollView(
-            key: ValueKey(c.page),
-            slivers: [
-              if (c.page != StepPage.home)
-                section(
-                  SearchSteps(
-                    step: c.page == StepPage.reference
-                        ? 1
-                        : c.page == StepPage.albums
-                        ? 2
-                        : 3,
+          child: Material(
+            color: c.page == StepPage.home
+                ? HalladinColors.ivory
+                : Theme.of(context).colorScheme.surface,
+            // Keep the branded header attached while dragging at the top on iOS.
+            child: CustomScrollView(
+              physics: const ClampingScrollPhysics(),
+              key: ValueKey(c.page),
+              slivers: [
+                ...content(),
+                if (c.message.isNotEmpty)
+                  section(
+                    Text(c.message, key: const ValueKey('status-message')),
                   ),
-                ),
-              ...content(),
-              if (c.message.isNotEmpty)
-                section(Text(c.message, key: const ValueKey('status-message'))),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            ],
+                if (c.page != StepPage.home)
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              ],
+            ),
           ),
         ),
       ),
@@ -1261,7 +1585,7 @@ class ReferenceView extends StatelessWidget {
                               border: Border.all(
                                 width: active ? 4 : 2,
                                 color: active
-                                    ? Theme.of(context).colorScheme.primary
+                                    ? HalladinColors.turquoise
                                     : Colors.white,
                               ),
                               borderRadius: BorderRadius.circular(4),
@@ -1269,7 +1593,7 @@ class ReferenceView extends StatelessWidget {
                             child: Align(
                               alignment: Alignment.topLeft,
                               child: ColoredBox(
-                                color: const Color(0xcc292435),
+                                color: HalladinColors.night,
                                 child: Padding(
                                   padding: const EdgeInsets.all(2),
                                   child: Text(
@@ -1346,6 +1670,10 @@ class ReviewPage extends StatelessWidget {
                 ),
               if (!accepted && review?.outcome != 'unreadable')
                 FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: HalladinColors.turquoise,
+                    foregroundColor: HalladinColors.night,
+                  ),
                   onPressed: () => c.confirm(id, true),
                   child: const Text('Sí, es esta persona'),
                 ),

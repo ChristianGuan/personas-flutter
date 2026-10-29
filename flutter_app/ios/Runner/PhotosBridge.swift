@@ -200,7 +200,7 @@ final class PhotosBridge: NSObject, FlutterPlugin, FlutterStreamHandler, PHPicke
             sharing = true; share(ids, index: 0, urls: [], result: result)
         case "settings":
             guard let url = URL(string: UIApplication.openSettingsURLString) else { result(nil); return }; UIApplication.shared.open(url); result(nil)
-        case "cloudSettings": fail(result, photoError("En iPhone usa Fotos para iCloud, Archivos para Google Drive o Compartir → Personas desde Google Fotos."))
+        case "cloudSettings": fail(result, photoError("En iPhone usa Fotos para iCloud, Archivos para Google Drive o Compartir → Halladin desde Google Fotos."))
         default: result(FlutterMethodNotImplemented)
         }
     }

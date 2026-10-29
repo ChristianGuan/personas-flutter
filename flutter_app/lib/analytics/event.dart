@@ -85,7 +85,15 @@ bool validPayload(String type, Payload payload, {int schemaVersion = 1}) {
       'processingMs',
     },
   };
-  const diagnostics = {'readMs', 'decodeMs', 'engineMs', 'cacheHits', 'cacheMisses', 'cancelLatencyMs', 'timeToCancelMs'};
+  const diagnostics = {
+    'readMs',
+    'decodeMs',
+    'engineMs',
+    'cacheHits',
+    'cacheMisses',
+    'cancelLatencyMs',
+    'timeToCancelMs',
+  };
   final fields = switch (type) {
     'session_started' => {'sessionId'},
     'session_ended' => {'sessionId', 'durationMs'},
@@ -99,9 +107,14 @@ bool validPayload(String type, Payload payload, {int schemaVersion = 1}) {
     'results_presented' => {...common, 'presentationMs'},
     _ => <String>{},
   };
-  if ({'search_completed','search_cancelled','search_failed'}.contains(type)) {
+  if ({
+    'search_completed',
+    'search_cancelled',
+    'search_failed',
+  }.contains(type)) {
     fields.addAll(diagnostics.where(payload.containsKey));
-    if (payload.containsKey('cacheHits') != payload.containsKey('cacheMisses')) return false;
+    if (payload.containsKey('cacheHits') != payload.containsKey('cacheMisses'))
+      return false;
   }
   if (fields.isEmpty ||
       fields.length != payload.length ||
@@ -131,7 +144,10 @@ bool validPayload(String type, Payload payload, {int schemaVersion = 1}) {
   if (type == 'results_reviewed' &&
       (payload['confirmed'] as int) + (payload['rejected'] as int) == 0)
     return false;
-  if (payload.containsKey('cacheHits') && (payload['cacheHits'] as int) + (payload['cacheMisses'] as int) > (payload['photosProcessed'] as int)) return false;
+  if (payload.containsKey('cacheHits') &&
+      (payload['cacheHits'] as int) + (payload['cacheMisses'] as int) >
+          (payload['photosProcessed'] as int))
+    return false;
   if (payload.containsKey('photosProcessed')) {
     final processed = payload['photosProcessed'] as int;
     if (processed > (payload['photosPlanned'] as int) ||

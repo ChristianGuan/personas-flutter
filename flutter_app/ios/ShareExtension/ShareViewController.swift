@@ -5,7 +5,7 @@ final class ShareViewController: UIViewController {
     private var started = false
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated); guard !started else { return }; started = true
-        let text = UILabel(); text.text = "Preparando fotos para Personas…"; text.numberOfLines = 0; text.textAlignment = .center
+        let text = UILabel(); text.text = "Preparando fotos para Halladin…"; text.numberOfLines = 0; text.textAlignment = .center
         text.translatesAutoresizingMaskIntoConstraints = false; view.backgroundColor = .systemBackground; view.addSubview(text)
         NSLayoutConstraint.activate([text.centerXAnchor.constraint(equalTo: view.centerXAnchor), text.centerYAnchor.constraint(equalTo: view.centerYAnchor), text.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -48)])
         let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }.filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
@@ -19,7 +19,7 @@ final class ShareViewController: UIViewController {
         copy(providers, index: 0, inbox: inbox, text: text)
     }
     private func copy(_ providers: [NSItemProvider], index: Int, inbox: URL, text: UILabel) {
-        guard index < providers.count else { DispatchQueue.main.async { text.text = "Fotos recibidas. Abre Personas para añadirlas a tu búsqueda."; self.extensionContext?.completeRequest(returningItems: nil) }; return }
+        guard index < providers.count else { DispatchQueue.main.async { text.text = "Fotos recibidas. Abre Halladin para añadirlas a tu búsqueda."; self.extensionContext?.completeRequest(returningItems: nil) }; return }
         let provider = providers[index]
         guard let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }) else { fail(text); return }
         provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in

@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <application android:label="Personas" android:name="${applicationName}" android:icon="@drawable/ic_personas"
+    <application android:label="Halladin" android:name="${applicationName}" android:icon="@mipmap/ic_halladin" android:roundIcon="@mipmap/ic_halladin"
         android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules">
         <activity android:name="co.local.personas.flutter.MainActivity" android:exported="true" android:launchMode="singleTask"
             android:theme="@style/LaunchTheme" android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize"

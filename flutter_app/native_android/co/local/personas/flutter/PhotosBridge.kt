@@ -61,7 +61,7 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
             is SecurityException -> "No tenemos acceso a estas fotos. Vuelve a elegirlas o revisa el permiso."
             is CancellationException -> "Acción cancelada."
             else -> if(Build.VERSION.SDK_INT>=31 && e is android.app.ForegroundServiceStartNotAllowedException)
-                "Vuelve a Personas y pulsa Buscar para iniciar el análisis antes de cambiar de app."
+                "Vuelve a Halladin y pulsa Buscar para iniciar el análisis antes de cambiar de app."
                 else "No se pudo completar la acción. Revisa el acceso y, si la foto está en la nube, la conexión."
         }
         result.error(if(e is CancellationException) "cancelled" else "photo_error",message,null)
@@ -161,7 +161,7 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
                 val context=call.argument<Map<String,Any?>>("context") ?: emptyMap()
                 val token=runtime.prepare(run,ids,faces,context)
                 try {activity.startForegroundService(Intent(activity,AnalysisService::class.java).putExtra("token",token))}
-                catch(e: Exception) {runtime.cancel(run,reason="No se pudo iniciar el análisis en segundo plano. Vuelve a abrir Personas e inténtalo otra vez.");throw e}
+                catch(e: Exception) {runtime.cancel(run,reason="No se pudo iniciar el análisis en segundo plano. Vuelve a abrir Halladin e inténtalo otra vez.");throw e}
                 result.success(mapOf("backgroundMode" to "androidService"))
             }
             "cancel" -> {

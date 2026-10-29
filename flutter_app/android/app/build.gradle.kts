@@ -1,7 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
+}
+val releaseSigningFile = rootProject.file("key.properties")
+val releaseSigning = Properties()
+if (releaseSigningFile.isFile) {
+    releaseSigningFile.inputStream().use { releaseSigning.load(it) }
+    for (key in listOf("storeFile", "storePassword", "keyAlias", "keyPassword")) {
+        require(!releaseSigning.getProperty(key).isNullOrBlank()) {
+            "Falta $key en android/key.properties. No se puede firmar release."
+        }
+    }
+    require(rootProject.file(releaseSigning.getProperty("storeFile")).isFile) {
+        "No existe el keystore configurado en android/key.properties."
+    }
+}
+// Debug/IDE sync remain available without secrets. Release must never fall back to debug signing.
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.path.startsWith(":app:") && it.name.contains("Release") }) {
+        check(releaseSigningFile.isFile) {
+            "Release requiere android/key.properties. Configura tu upload key con tools/setup_android_signing.py."
+        }
+    }
 }
 android {
     namespace = "co.local.personas"
@@ -11,9 +34,24 @@ android {
         applicationId = "co.local.personas"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+    signingConfigs {
+        if (releaseSigningFile.isFile) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            if (releaseSigningFile.isFile) signingConfig = signingConfigs.getByName("release")
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets.getByName("main") {

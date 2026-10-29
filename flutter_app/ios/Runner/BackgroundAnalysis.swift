@@ -117,7 +117,7 @@ enum AnalysisNotifications {
     static func finished(matches: Int, processed: Int, interrupted: Bool, run: Int, completion: @escaping () -> Void) {
         let content = UNMutableNotificationContent()
         content.title = interrupted ? "Tu análisis necesita revisión" : "Tu análisis ha terminado"
-        content.body = interrupted ? "El análisis se interrumpió. Abre Personas para revisar lo encontrado."
+        content.body = interrupted ? "El análisis se interrumpió. Abre Halladin para revisar lo encontrado."
             : "\(matches) coincidencias · \(processed) fotos procesadas. Toca para revisarlas."
         content.sound = .default
         // One current completion, no person names, portraits, album titles or URIs.

@@ -8,11 +8,73 @@ import 'package:personas_flutter/ui_components.dart';
 import 'background_controller_test.dart' show snapshot;
 import 'search_controller_test.dart' show TestBridge, reference;
 
+Future<void> revealInBody(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(finder, 150);
+  for (var i = 0; i < 40 && finder.hitTestable().evaluate().isEmpty; i++) {
+    final viewport = tester.getRect(find.byType(CustomScrollView));
+    final dy = tester.getCenter(finder).dy > viewport.center.dy ? -60.0 : 60.0;
+    await tester.drag(find.byType(CustomScrollView), Offset(0, dy));
+    await tester.pumpAndSettle();
+  }
+  expect(finder.hitTestable(), findsOneWidget);
+}
+
 void main() {
-  testWidgets('step 3 count follows incoming matches, completion and review', (tester) async {
+  testWidgets(
+    'dragging beyond the top does not reveal a blank gap',
+    (tester) async {
+      final bridge = TestBridge();
+      final c = SearchController(bridge);
+      c.reviews.addAll(
+        List.generate(20, (i) => Review('match-$i', 'match', 'key-$i')),
+      );
+      await tester.pumpWidget(PersonasApp(controller: c));
+      await tester.pumpAndSettle();
+      for (final page in [
+        StepPage.home,
+        StepPage.reference,
+        StepPage.albums,
+        StepPage.results,
+      ]) {
+        c.page = page;
+        c.notifyListeners();
+        await tester.pumpAndSettle();
+        final view = find.byType(CustomScrollView);
+        final scrollable = find
+            .descendant(of: view, matching: find.byType(Scrollable))
+            .first;
+        final position = tester.state<ScrollableState>(scrollable).position;
+        final gesture = await tester.startGesture(tester.getCenter(view));
+        await gesture.moveBy(const Offset(0, 180));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(position.pixels, position.minScrollExtent, reason: page.name);
+        await gesture.up();
+        await tester.pumpAndSettle();
+        if (position.maxScrollExtent > 0) {
+          await tester.drag(view, const Offset(0, -100));
+          await tester.pumpAndSettle();
+          expect(position.pixels, greaterThan(position.minScrollExtent));
+        }
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await bridge.stream.close();
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+  testWidgets('step 3 count follows incoming matches, completion and review', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 3000);
     tester.view.devicePixelRatio = 1;
-    addTearDown(() { tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio(); });
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
     final bridge = TestBridge();
     final c = SearchController(bridge);
     await c.initialize();
@@ -20,29 +82,50 @@ void main() {
     await c.useReference('person');
     c.addPhotos(['a', 'b', 'c']);
     await c.search();
-    final run = bridge.calls.lastWhere((call) => call.$1 == 'search').$2!['runId'];
+    final run = bridge.calls
+        .lastWhere((call) => call.$1 == 'search')
+        .$2!['runId'];
     await tester.pumpWidget(PersonasApp(controller: c));
     await tester.pumpAndSettle();
     expect(find.text('0 coincidencias'), findsOneWidget);
-    bridge.event({'type':'photo','runId':run,'id':'a','outcome':'match','key':'ka'});
+    bridge.event({
+      'type': 'photo',
+      'runId': run,
+      'id': 'a',
+      'outcome': 'match',
+      'key': 'ka',
+    });
     await tester.pump();
     expect(find.text('1 coincidencia'), findsOneWidget);
-    bridge.event({'type':'photo','runId':run,'id':'b','outcome':'match','key':'kb'});
-    bridge.event({'type':'photo','runId':run,'id':'c','outcome':'review','key':'kc'});
+    bridge.event({
+      'type': 'photo',
+      'runId': run,
+      'id': 'b',
+      'outcome': 'match',
+      'key': 'kb',
+    });
+    bridge.event({
+      'type': 'photo',
+      'runId': run,
+      'id': 'c',
+      'outcome': 'review',
+      'key': 'kc',
+    });
     await tester.pump();
     expect(find.text('2 coincidencias'), findsOneWidget);
-    bridge.event({'type':'done','runId':run,'cancelled':false});
+    bridge.event({'type': 'done', 'runId': run, 'cancelled': false});
     await tester.pumpAndSettle();
     expect(find.text('2 coincidencias'), findsOneWidget);
-    c.confirm('c',true);
+    c.confirm('c', true);
     await tester.pump();
     expect(find.text('3 coincidencias'), findsOneWidget);
-    c.confirm('a',false);
+    c.confirm('a', false);
     await tester.pump();
     expect(find.text('2 coincidencias'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
-    c.dispose();await bridge.stream.close();
+    c.dispose();
+    await bridge.stream.close();
   });
 
   for (final useBack in [false, true]) {
@@ -135,7 +218,7 @@ void main() {
         }
         await tester.tap(find.byTooltip('Volver'));
         await tester.pumpAndSettle();
-        expect(find.text('Encuentra tus mejores momentos'), findsOneWidget);
+        expect(find.bySemanticsLabel('Encuentra a tu gente'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         c.dispose();
@@ -160,7 +243,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(tester.takeException(), isNull);
       await tester.pumpAndSettle();
-      expect(find.text('Encuentra tus mejores momentos'), findsOneWidget);
+      expect(find.bySemanticsLabel('Encuentra a tu gente'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
       await bridge.stream.close();
@@ -172,8 +255,8 @@ void main() {
     final bridge = TestBridge();
     final c = SearchController(bridge);
     await tester.pumpWidget(PersonasApp(controller: c));
-    expect(find.text('Encuentra tus mejores momentos'), findsOneWidget);
-    await tester.tap(find.text('Buscar a una persona'));
+    expect(find.bySemanticsLabel('Encuentra a tu gente'), findsOneWidget);
+    await tester.tap(find.text('Nueva búsqueda'));
     await tester.pumpAndSettle();
     expect(find.text('Elegir foto de referencia'), findsOneWidget);
     expect(find.text('Elegir álbum'), findsOneWidget);
@@ -195,7 +278,7 @@ void main() {
     final bridge = TestBridge();
     final c = SearchController(bridge);
     await tester.pumpWidget(PersonasApp(controller: c));
-    final button = find.widgetWithText(FilledButton, 'Buscar a una persona');
+    final button = find.widgetWithText(FilledButton, 'Nueva búsqueda');
     expect(tester.getRect(button).bottom, lessThanOrEqualTo(480));
     await tester.tap(button);
     await tester.pumpAndSettle();
@@ -212,17 +295,28 @@ void main() {
     final c = SearchController(bridge);
     c.page = StepPage.albums;
     await tester.pumpWidget(PersonasApp(controller: c));
-    expect(find.text('Elegir fotos'), findsOneWidget);
-    expect(find.text('Elegir desde Archivos'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Permitir acceso a álbumes'),
+      150,
+    );
     expect(find.text('Permitir acceso a álbumes'), findsOneWidget);
-    expect(find.byType(ScanSpeedNote), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Selecciona una a una'), 150);
+    expect(find.text('Selecciona una a una'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Elegir desde Archivos'), 150);
+    expect(find.text('Elegir desde Archivos'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Tu primer escaneo'), 150);
+    await tester.tap(find.text('Tu primer escaneo'));
+    await tester.pumpAndSettle();
+    expect(find.text(ScanSpeedNote.message), findsOneWidget);
+    await tester.tap(find.text('Entendido'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     c.dispose();
     await bridge.stream.close();
   });
   testWidgets(
-    'steps support small dark screens, large text and reduced motion through selection',
+    'steps retain the light palette with dark system mode, large text and reduced motion',
     (tester) async {
       tester.view.physicalSize = const Size(640, 960);
       tester.view.devicePixelRatio = 2;
@@ -266,6 +360,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
+          Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
+          Brightness.light,
+        );
+        expect(
           find.bySemanticsLabel(RegExp('Paso [123] de 3:')),
           findsOneWidget,
         );
@@ -282,8 +380,22 @@ void main() {
           );
         }
         if (page == StepPage.albums) {
-          await tester.scrollUntilVisible(find.byType(ScanSpeedNote), 200);
+          await revealInBody(tester, find.text('Tu primer escaneo'));
+          await tester.tap(find.text('Tu primer escaneo'));
+          await tester.pumpAndSettle();
           expect(find.text(ScanSpeedNote.message), findsOneWidget);
+          await tester.tap(find.text('Entendido'));
+          await tester.pumpAndSettle();
+          await revealInBody(tester, find.text('Puedes cambiar de app'));
+          await tester.tap(find.text('Puedes cambiar de app'));
+          await tester.pumpAndSettle();
+          expect(find.byType(BackgroundNote), findsOneWidget);
+          expect(
+            find.textContaining('iOS concede un tiempo limitado'),
+            findsOneWidget,
+          );
+          await tester.tap(find.text('Entendido'));
+          await tester.pumpAndSettle();
           await tester.drag(
             find.byType(CustomScrollView),
             const Offset(0, -1200),
@@ -299,12 +411,12 @@ void main() {
           // actual scrolling rather than aligning the entire tile to the top.
           for (
             var i = 0;
-            i < 20 && find.text('Elegir').hitTestable().evaluate().isEmpty;
+            i < 80 && find.text('Elegir').hitTestable().evaluate().isEmpty;
             i++
           ) {
             await tester.drag(
               find.byType(CustomScrollView),
-              const Offset(0, -160),
+              const Offset(0, -60),
             );
             await tester.pumpAndSettle();
           }
@@ -336,12 +448,168 @@ void main() {
       c.page = StepPage.results;
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('No encontramos coincidencias'),
+        150,
+      );
       expect(find.text('No encontramos coincidencias'), findsOneWidget);
       expect(find.text('Cambiar referencia'), findsOneWidget);
       final share = tester.widget<FilledButton>(
         find.widgetWithText(FilledButton, 'Compartir selección'),
       );
       expect(share.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await bridge.stream.close();
+    },
+  );
+  testWidgets(
+    'albums precede manual sources and selected reference keeps its change action',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final bridge = TestBridge();
+      bridge.handlers['albumPhotos'] = (_) async => ['one', 'two'];
+      final c = SearchController(bridge)
+        ..page = StepPage.albums
+        ..access = 'full';
+      c.reference = Reference('person', 'person', 1000, 800, [
+        const Face('face', .1, .1, .3, .4),
+      ]);
+      c.chosen = c.reference!.faces.first;
+      c.albums = [const Album('a', 'Álbum local de prueba', 'one', 2)];
+      await tester.pumpWidget(PersonasApp(controller: c));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Álbum local de prueba')).dy,
+        lessThan(tester.getTopLeft(find.text('Selecciona una a una')).dy),
+      );
+      await tester.tap(find.text('Álbum local de prueba'));
+      await tester.pumpAndSettle();
+      expect(c.album?.id, 'a');
+      expect(c.photos, ['one', 'two']);
+      await tester.tap(find.text('Cambiar foto'));
+      await tester.pumpAndSettle();
+      expect(c.page, StepPage.reference);
+      expect(c.photos, ['one', 'two']);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await bridge.stream.close();
+    },
+  );
+  testWidgets(
+    'change album beside repeat search preserves reference and does not start recognition',
+    (tester) async {
+      tester.view.physicalSize = const Size(640, 960);
+      tester.view.devicePixelRatio = 2;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      });
+      final bridge = TestBridge();
+      bridge.handlers['albums'] = (_) async => {'access': 'full', 'albums': []};
+      final c = SearchController(bridge)..page = StepPage.reference;
+      c.reference = Reference('person', 'person', 1000, 800, [
+        const Face('face', .1, .1, .3, .4),
+      ]);
+      c.chosen = c.reference!.faces.first;
+      c.photos = List.generate(209, (i) => 'photo-$i');
+      final chosen = c.chosen, reference = c.reference;
+      await tester.pumpWidget(PersonasApp(controller: c));
+      await tester.pumpAndSettle();
+      expect(find.text('Buscar de nuevo en 209 fotos'), findsOneWidget);
+      final change = find.widgetWithText(TextButton, 'Cambiar álbum');
+      expect(tester.getRect(change).bottom, lessThanOrEqualTo(480));
+      await tester.tap(change);
+      await tester.pumpAndSettle();
+      expect(c.page, StepPage.albums);
+      expect(c.reference, same(reference));
+      expect(c.chosen, same(chosen));
+      expect(c.photos, hasLength(209));
+      expect(bridge.calls.any((call) => call.$1 == 'search'), false);
+      expect(bridge.calls.any((call) => call.$1 == 'albums'), true);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      await bridge.stream.close();
+    },
+  );
+  testWidgets(
+    'bulk selection stays visible with many results and shares only accepted matches',
+    (tester) async {
+      tester.view.physicalSize = const Size(640, 960);
+      tester.view.devicePixelRatio = 2;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        tester.platformDispatcher.clearTextScaleFactorTestValue();
+      });
+      final bridge = TestBridge();
+      final c = SearchController(bridge)..page = StepPage.results;
+      c.reviews.addAll(
+        List.generate(80, (i) => Review('match-$i', 'match', 'key-$i')),
+      );
+      c.reviews.add(const Review('uncertain', 'review', null));
+      c.reviews.add(const Review('excluded', 'rejected', null));
+      await tester.pumpWidget(PersonasApp(controller: c));
+      await tester.pumpAndSettle();
+      final select = find.byTooltip('Seleccionar todas');
+      expect(select.hitTestable(), findsOneWidget);
+      expect(tester.getCenter(select).dx, closeTo(160, .1));
+      final selectButton = find.descendant(
+        of: select,
+        matching: find.byType(TextButton),
+      );
+      final initialColor = tester
+          .widget<TextButton>(selectButton)
+          .style!
+          .foregroundColor!
+          .resolve({});
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
+      await tester.pumpAndSettle();
+      expect(select.hitTestable(), findsOneWidget);
+      await tester.tap(select);
+      await tester.pumpAndSettle();
+      expect(c.selected, hasLength(80));
+      final clearAll = find.byTooltip('Deseleccionar todas');
+      expect(tester.getCenter(clearAll).dx, closeTo(160, .1));
+      final selectedButton = find.descendant(
+        of: clearAll,
+        matching: find.byType(TextButton),
+      );
+      expect(
+        tester
+            .widget<TextButton>(selectedButton)
+            .style!
+            .foregroundColor!
+            .resolve({}),
+        isNot(initialColor),
+      );
+      expect(c.selected, containsAll(c.results));
+      expect(c.selected, isNot(contains('uncertain')));
+      final share = find.widgetWithText(FilledButton, 'Compartir selección');
+      expect(share.hitTestable(), findsOneWidget);
+      await tester.tap(share);
+      await tester.pumpAndSettle();
+      final ids =
+          bridge.calls.lastWhere((call) => call.$1 == 'share').$2!['ids']
+              as List;
+      expect(ids, hasLength(80));
+      expect(ids, isNot(contains('uncertain')));
+      expect(ids, isNot(contains('excluded')));
+      await tester.tap(find.byTooltip('Deseleccionar todas'));
+      await tester.pumpAndSettle();
+      expect(c.selected, isEmpty);
+      expect(tester.widget<FilledButton>(share).onPressed, isNull);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       c.dispose();

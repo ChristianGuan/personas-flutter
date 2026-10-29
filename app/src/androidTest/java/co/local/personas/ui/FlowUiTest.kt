@@ -45,9 +45,9 @@ class FlowUiTest {
     }
 
     @Test fun homeAndReferenceNavigation() {
-        compose.onNodeWithText("Encuentra sus mejores momentos").assertIsDisplayed()
+        compose.onNodeWithText("Encuentra a tu gente").assertIsDisplayed()
         screenshot("home")
-        compose.onNodeWithText("Buscar a una persona").performClick()
+        compose.onNodeWithText("Nueva búsqueda").performClick()
         compose.onNodeWithText("Elegir álbum").assertIsNotEnabled()
         compose.onNodeWithText("Elegir foto de referencia").performScrollTo().assertIsDisplayed()
         screenshot("reference-empty")
@@ -62,9 +62,9 @@ class FlowUiTest {
                 }
             }
         }
-        compose.onNodeWithText("Buscar a una persona").assertIsDisplayed()
+        compose.onNodeWithText("Nueva búsqueda").assertIsDisplayed()
         screenshot("small-large-home")
-        compose.onNodeWithText("Buscar a una persona").performClick()
+        compose.onNodeWithText("Nueva búsqueda").performClick()
         compose.onNodeWithText("Elegir álbum").assertIsDisplayed().assertIsNotEnabled()
         // Lazy grids do not compose items outside the viewport. Scroll the grid first.
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Elegir foto de referencia"))
@@ -330,7 +330,7 @@ class FlowUiTest {
             compose.waitUntil(10_000) {!vm.state.value.libraryLoading}
             assertEquals(albums[0].key,vm.state.value.selectedAlbum?.key)
             assertEquals(listOf(inserted[0]),vm.state.value.photos)
-            compose.onNodeWithText("Buscar en este álbum").assertIsEnabled().performClick()
+            compose.onNodeWithText("Buscar coincidencias").assertIsEnabled().performClick()
             compose.waitUntil(30_000) {!vm.state.value.busy}
             assertEquals(SearchStep.RESULTS,vm.state.value.step)
             // Both files contain the same face. Only the chosen bucket may appear.
@@ -362,9 +362,9 @@ class FlowUiTest {
                 CompositionLocalProvider(LocalConfiguration provides dark) {PersonasTheme {SearchScreen()}}
             }
         }
-        compose.onNodeWithText("Buscar a una persona").assertIsDisplayed()
+        compose.onNodeWithText("Nueva búsqueda").assertIsDisplayed()
         screenshot("dark-home")
-        compose.onNodeWithText("Buscar a una persona").performClick()
+        compose.onNodeWithText("Nueva búsqueda").performClick()
         compose.onNodeWithText("Elegir álbum").assertIsNotEnabled()
         screenshot("dark-reference")
     }

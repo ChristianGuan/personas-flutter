@@ -227,7 +227,7 @@ class CloudImportTest {
             val pkg=automation.rootInActiveWindow?.packageName?.toString()
             pkg!=null && pkg!=compose.activity.packageName && pkg!="com.android.systemui"
         }
-        compose.onNodeWithText("Buscar a una persona").performClick()
+        compose.onNodeWithText("Nueva búsqueda").performClick()
         compose.onNodeWithText("Google Fotos · Elegir de la nube").performScrollTo().performClick()
         compose.onNodeWithText("Configurar nube").performScrollTo().performClick()
         try {waitForExternalWindow()} finally {automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)}
