@@ -221,7 +221,7 @@ final class PhotosBridge: NSObject, FlutterPlugin, FlutterStreamHandler, PHPicke
             var event: [String: Any] = ["type": "photo", "runId": run, "id": id, "outcome": "unreadable"]
             do {
                 let bytes = try data.get()
-                let key = "ios/imageio-srgb-rgba8/opencv4.12/yunet+sface-v1/" + SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+                let key = "ios/imageio-srgb-rgba8/opencv4.12/yunet+sface-flip-mean-v2/" + SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
                 let engine = try self.getEngine()
                 let matched: [String: Any]
                 let cacheStart = ProcessInfo.processInfo.systemUptime

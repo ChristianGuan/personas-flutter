@@ -1,5 +1,7 @@
 # ADR 007 — Aceptación estricta, revisión explícita y reutilización antes de decodificar
 
+Actualización: [ADR012](012-reconocimiento-dos-vistas.md) sustituye el descriptor original por dos vistas del mismo rostro. Los umbrales de este ADR se mantienen. Para reproducir sus conteos históricos con la herramienta actual, usar `--descriptor original`.
+
 Estado: implementado y validado en CPH2637/API 36 con suite completa de 29 pruebas, perfilado adicional y diálogos a fuente real 200%; pendiente aceptación con álbum familiar. Sustituye el umbral automático de ADR 001/004 y amplía la caché de ADR 006.
 
 ## Problema y evidencia

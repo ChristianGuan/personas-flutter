@@ -69,7 +69,7 @@ class OpenCvFaces(private val context: Context,private val cacheEnabled: Boolean
     companion object {
         const val YUNET_HASH="8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
         const val SFACE_HASH="0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
-        private const val PIPELINE="opencv4.12.0/$YUNET_HASH/$SFACE_HASH/bgr/srgb-argb8888-heif3.0.0-orientation-v5/max3200/full+960/det0.85/min24/iou0.4/align5/l2-comparison-f32-v2"
+        private const val PIPELINE="opencv4.12.0/$YUNET_HASH/$SFACE_HASH/bgr/srgb-argb8888-heif3.0.0-orientation-v5/max3200/full+960/det0.85/min24/iou0.4/align5/flip-mean-l2-comparison-f32-v3"
     }
     private fun model(name: String, hash: String): String {
         val file = File(context.noBackupFilesDir, name)
@@ -145,17 +145,23 @@ class OpenCvFaces(private val context: Context,private val cacheEnabled: Boolean
             alias(encodedKey,key)
             val reused=key?.let {cache[it]}
             val photo=reused ?: detect(bgr).let(::DetectedPhoto).also {if(key!=null) cache.put(key,it)}
-            val row=Mat(1,15,CvType.CV_32F);val crop=Mat();val feature=Mat()
+            val row=Mat(1,15,CvType.CV_32F);val crop=Mat();val feature=Mat();val reflected=Mat();val reflectedFeature=Mat()
             var computed=0
             fun embedding(index: Int): FloatArray = photo.embeddings[index] ?: run {
                 row.put(0,0,photo.rows[index])
                 val embeddingStart=if(performance!=null) SystemClock.elapsedRealtimeNanos() else 0L
                 recognizer!!.alignCrop(bgr,row,crop)
                 recognizer!!.feature(crop,feature)
-                performance?.let {it.embeddingNs+=SystemClock.elapsedRealtimeNanos()-embeddingStart;it.embeddings++}
                 check(feature.total()==128L) {"Dimensión inesperada del modelo SFace"}
                 val vector=FloatArray(128);feature.get(0,0,vector)
-                val normalized=Matching.normalize(vector)
+                // Reflect the ALIGNED crop: never mirror the source landmarks or
+                // merge identities. Cache the fused descriptor for subsequent searches.
+                Core.flip(crop,reflected,1)
+                recognizer!!.feature(reflected,reflectedFeature)
+                check(reflectedFeature.total()==128L) {"Dimensión inesperada del modelo SFace"}
+                val reflectedVector=FloatArray(128);reflectedFeature.get(0,0,reflectedVector)
+                val normalized=Matching.mergeViews(vector,reflectedVector)
+                performance?.let {it.embeddingNs+=SystemClock.elapsedRealtimeNanos()-embeddingStart;it.embeddings+=2}
                 (if(references!=null) Matching.normalize(normalized) else normalized).also {photo.embeddings[index]=it;computed++}
             }
             try {
@@ -171,7 +177,7 @@ class OpenCvFaces(private val context: Context,private val cacheEnabled: Boolean
                 return Evaluation(faces=photo.rows.mapIndexed {index,box ->
                     FoundFace(RectF(box[0],box[1],box[0]+box[2],box[1]+box[3]),embedding(index).copyOf())
                 })
-            } finally {row.release();crop.release();feature.release()}
+            } finally {row.release();crop.release();feature.release();reflected.release();reflectedFeature.release()}
         } finally { rgba.release(); bgr.release() }
     }
 

@@ -92,10 +92,16 @@ bool modelValid(NSString *path,NSString *expected) {
     return kept;
 }
 - (Vector)embedding:(const cv::Mat&)image row:(const Row&)row {
-    cv::Mat box(1,15,CV_32F,const_cast<float *>(row.data())),crop,feature;
+    cv::Mat box(1,15,CV_32F,const_cast<float *>(row.data())),crop,feature,reflected,reflectedFeature;
     _recognizer->alignCrop(image,box,crop);_recognizer->feature(crop,feature);
     if(feature.total()!=128) throw std::runtime_error("SFace dimension");
-    return normalize(Vector(feature.ptr<float>(),feature.ptr<float>()+128));
+    auto original=normalize(Vector(feature.ptr<float>(),feature.ptr<float>()+128));
+    cv::flip(crop,reflected,1);_recognizer->feature(reflected,reflectedFeature);
+    if(reflectedFeature.total()!=128) throw std::runtime_error("SFace dimension");
+    auto mirrored=normalize(Vector(reflectedFeature.ptr<float>(),reflectedFeature.ptr<float>()+128));
+    Vector merged(128);double norm=0;
+    for(size_t i=0;i<128;i++) {merged[i]=original[i]+mirrored[i];norm+=double(merged[i])*merged[i];}
+    return norm<=1e-24?original:normalize(merged);
 }
 - (NSDictionary *)referenceRGBA:(NSData *)pixels width:(int)width height:(int)height error:(NSError **)error {
     try {

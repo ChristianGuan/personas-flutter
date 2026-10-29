@@ -16,6 +16,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixtures',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
+    parser.add_argument('--descriptor',choices=['original','flip-mean'],default='flip-mean',
+                        help='Compare the previous descriptor with the current two-view descriptor.')
     args=parser.parse_args();cv2.setNumThreads(2)
     models=Path(__file__).resolve().parent.parent/'app/src/main/assets/models'
     detector=cv2.FaceDetectorYN.create(str(models/'yunet.onnx'),'',(92,112),.85,.3,5000)
@@ -26,7 +28,17 @@ def main():
         _,faces=detector.detect(pixels)
         rows=[] if faces is None else [f for f in faces if min(f[2],f[3])>=24]
         if reference and rows: rows=[max(rows,key=lambda f:float(f[2]*f[3]))]
-        return [normal(normal(recognizer.feature(recognizer.alignCrop(pixels,f.reshape(1,15))))) for f in rows]
+        result=[]
+        for f in rows:
+            crop=recognizer.alignCrop(pixels,f.reshape(1,15))
+            vector=normal(recognizer.feature(crop))
+            if args.descriptor=='flip-mean':
+                reflected=normal(recognizer.feature(cv2.flip(crop,1)))
+                combined=vector+reflected
+                if np.sum(combined.astype(np.float64)**2)>1e-24:
+                    vector=normal(combined)
+            result.append(normal(vector))
+        return result
     for subject in range(1,41):
         for image in range(1,11):
             pixels=cv2.imread(str(args.fixtures/f's{subject:02}-{image:02}.png'))
@@ -34,7 +46,7 @@ def main():
             queries[subject,image]=vectors(pixels,.85)
             if image<=4: refs[subject,image]=vectors(pixels,.65,True)
             if not queries[subject,image]: missing.append([subject,image])
-    report={'credit':'AT&T Laboratories Cambridge','opencv':cv2.__version__,'scope':'Internal host check; calibration subjects1-20, evaluation21-40; separate identities, not external blind evaluation or family calibration','missingQueryImages':len(missing),'splits':{}}
+    report={'credit':'AT&T Laboratories Cambridge','opencv':cv2.__version__,'descriptor':args.descriptor,'scope':'Internal host check; calibration subjects1-20, evaluation21-40; separate identities, not external blind evaluation or family calibration','missingQueryImages':len(missing),'splits':{}}
     all_pairs={}
     for split,subjects in [('calibration',range(1,21)),('evaluation',range(21,41))]:
         protocols={}

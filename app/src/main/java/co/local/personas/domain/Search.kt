@@ -20,6 +20,15 @@ object Matching {
         else -> MatchDecision.NONE
     }
     fun prepare(references: List<FloatArray>) = PreparedReferences(references.map(::normalize))
+    /** Fuse two views of the SAME aligned face, never different people/references. */
+    fun mergeViews(original: FloatArray, reflected: FloatArray): FloatArray {
+        require(original.size == reflected.size)
+        val a = normalize(original)
+        val b = normalize(reflected)
+        val merged = FloatArray(a.size) { a[it] + b[it] }
+        // A contradictory/degenerate second view must not invalidate a usable face.
+        return if (merged.sumOf { it.toDouble() * it } <= 1e-24) a else normalize(merged)
+    }
     fun normalize(vector: FloatArray): FloatArray {
         require(vector.isNotEmpty() && vector.all { it.isFinite() })
         val norm = sqrt(vector.sumOf { it.toDouble() * it })

@@ -59,7 +59,8 @@ android {
         assets.srcDir("../../../app/src/main/assets")
         res.srcDir("../../../app/src/main/res")
     }
-    sourceSets.getByName("test").java.srcDir("../../../app/src/test/java/co/local/personas/data")
+    sourceSets.getByName("test").java.srcDirs("../../../app/src/test/java/co/local/personas/data", "../../../app/src/test/java/co/local/personas/domain")
+    sourceSets.getByName("androidTest").java.srcDir("../../../app/src/androidTest/java/co/local/personas/data")
     androidResources { noCompress += "onnx" }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
