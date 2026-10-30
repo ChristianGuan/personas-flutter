@@ -11,7 +11,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
@@ -58,34 +57,29 @@ class ContentPhotos(private val resolver: ContentResolver, private val maxEdge: 
             catch(e: PhotoDecodeException) {HeifFallback.decode(bytes,maxEdge,e)}
         } ?: decode(uri)
 
-    private suspend fun readLimited(uri: Uri,limit: Int,heifOnly: Boolean=false): ByteArray? = withContext(Dispatchers.IO) {
-        resolver.openInputStream(uri)?.use {input ->
-            val output=ByteArrayOutputStream(64*1024)
-            val block=ByteArray(64*1024)
-            while(true) {
-                currentCoroutineContext().ensureActive()
-                val count=input.read(block)
-                if(count<0) return@use output.toByteArray()
-                if(output.size()+count>limit) return@use null
-                val checkingHeader=heifOnly && output.size()<64
-                output.write(block,0,count)
-                if(checkingHeader && output.size()>=64 && !HeifFallback.hasHeifHeader(output.toByteArray())) return@use null
+    private suspend fun readLimited(uri: Uri,limit: Int,heifOnly: Boolean=false,digest: MessageDigest?=null): ByteArray? = withContext(Dispatchers.IO) {
+        val coroutine=currentCoroutineContext()
+        resolver.openAssetFileDescriptor(uri,"r")?.use {descriptor ->
+            // Oversized files already use URI decoding. Do not first read 8 MiB
+            // only to discover that the snapshot cannot be retained.
+            val length=descriptor.length
+            if(length>limit) return@use null
+            descriptor.createInputStream().use {input ->
+                readBoundedPhoto(input,limit,length,digest,
+                    checkActive={coroutine.ensureActive()},
+                    acceptHeader=if(heifOnly) ({HeifFallback.hasHeifHeader(it)}) else null)
             }
-            @Suppress("UNREACHABLE_CODE") null
         }
     }
 
     override suspend fun prepare(uri: Uri,mayReuse: (String)->Boolean): PreparedPhoto {
         val readStart=System.nanoTime()
-        val bytes=try {readLimited(uri,MAX_SNAPSHOT_BYTES)} catch(e: CancellationException) {throw e}
+        val hash=MessageDigest.getInstance("SHA-256")
+        hash.update("ImageDecoder/software/srgb/argb8888/native+heif-coder3.0.0-orientation/max$maxEdge/v4/".toByteArray())
+        val bytes=try {readLimited(uri,MAX_SNAPSHOT_BYTES,digest=hash)} catch(e: CancellationException) {throw e}
         catch(_: Exception) {null} // Typed-descriptor providers keep the original URI path.
             ?: return PreparedPhoto(bitmap=decode(uri))
-        val key=withContext(Dispatchers.Default) {
-            val hash=MessageDigest.getInstance("SHA-256")
-            hash.update("ImageDecoder/software/srgb/argb8888/native+heif-coder3.0.0-orientation/max$maxEdge/v4/".toByteArray())
-            hash.update(bytes)
-            hash.digest().hexDigest()
-        }
+        val key=hash.digest().hexDigest()
         val readMs=(System.nanoTime()-readStart)/1_000_000
         val snapshot=PreparedPhoto(encoded=bytes,encodedKey=key,readMs=readMs,decodeMs=0)
         if(mayReuse(key)) return snapshot
