@@ -910,18 +910,26 @@ class SearchController extends ChangeNotifier {
     _changed();
   }
 
-  Future<void> clear() async {
+  Future<void> clear() => _clearSession(StepPage.home);
+
+  Future<void> newSearch() => _clearSession(StepPage.reference);
+
+  Future<void> _clearSession(StepPage destination) async {
     if (blocked) return;
     ++_generation;
     ++_libraryGeneration;
     ++_run;
+    busy = true;
+    _changed();
     try {
       await bridge.call('clear');
     } catch (e) {
+      busy = false;
       message = _error(e);
       _changed();
       return;
     }
+    if (_disposed) return;
     reference = null;
     chosen = null;
     searchReference = null;
@@ -933,9 +941,11 @@ class SearchController extends ChangeNotifier {
     incoming = [];
     _feedback.clear();
     _resetResults();
-    page = StepPage.home;
-    message =
-        'Datos de esta sesión eliminados. Tus fotos originales se conservan.';
+    busy = false;
+    page = destination;
+    message = destination == StepPage.reference
+        ? 'Elige una foto de referencia para tu nueva búsqueda.'
+        : 'Datos de esta sesión eliminados. Tus fotos originales se conservan.';
     _changed();
   }
 

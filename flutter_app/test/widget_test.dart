@@ -20,6 +20,51 @@ Future<void> revealInBody(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  for (final hasMatches in [true, false]) {
+    testWidgets(
+      'new search starts directly from results (matches: $hasMatches)',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+          tester.platformDispatcher.clearTextScaleFactorTestValue();
+        });
+        final bridge = TestBridge();
+        final c = SearchController(bridge);
+        await c.useReference('old-person');
+        c.addPhotos(['old-photo']);
+        c.page = StepPage.results;
+        if (hasMatches) {
+          c.reviews.addAll(
+            List.generate(40, (i) => Review('p$i', 'match', 'key$i')),
+          );
+          c.selected.add('p0');
+        }
+        await tester.pumpWidget(PersonasApp(controller: c));
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+        await tester.pumpAndSettle();
+        final start = find.widgetWithText(OutlinedButton, 'Nueva búsqueda');
+        expect(start.hitTestable(), findsOneWidget);
+        await tester.tap(start);
+        await tester.pumpAndSettle();
+        expect(c.page, StepPage.reference);
+        expect(c.reference, isNull);
+        expect(c.photos, isEmpty);
+        expect(c.results, isEmpty);
+        expect(c.selected, isEmpty);
+        expect(bridge.calls.where((call) => call.$1 == 'clear').length, 1);
+        await revealInBody(tester, find.text('Elegir foto de referencia'));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        c.dispose();
+        await bridge.stream.close();
+      },
+    );
+  }
   testWidgets(
     'dragging beyond the top does not reveal a blank gap',
     (tester) async {

@@ -1311,6 +1311,21 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                       );
                     },
                   ),
+                if (c.page == StepPage.results)
+                  Center(
+                    child: OutlinedButton.icon(
+                      onPressed: c.blocked
+                          ? null
+                          : () async {
+                              await c.newSearch();
+                              if (mounted && c.page == StepPage.reference) {
+                                setState(() => showDiscarded = false);
+                              }
+                            },
+                      icon: const Icon(Icons.person_search_outlined),
+                      label: const Text('Nueva búsqueda'),
+                    ),
+                  ),
                 if ((c.blocked && c.page == StepPage.reference) || c.picking)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 8),

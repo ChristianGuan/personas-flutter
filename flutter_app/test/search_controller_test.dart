@@ -67,6 +67,37 @@ void main() {
     bridge.event({'type': 'done', 'runId': run, 'cancelled': false});
   }
 
+  test(
+    'new search prevents duplicate clearing and preserves results on native failure',
+    () async {
+      await controller.useReference('person');
+      controller.addPhotos(['photo']);
+      controller.page = StepPage.results;
+      controller.reviews.add(const Review('photo', 'match', 'key'));
+      controller.selected.add('photo');
+      final clearing = Completer<void>();
+      bridge.handlers['clear'] = (_) => clearing.future;
+      final starting = controller.newSearch();
+      await controller.newSearch();
+      expect(controller.blocked, isTrue);
+      expect(bridge.calls.where((call) => call.$1 == 'clear').length, 1);
+      clearing.completeError(
+        PlatformException(
+          code: 'clear_failed',
+          message: 'No se pudo preparar la búsqueda.',
+        ),
+      );
+      await starting;
+      expect(controller.blocked, isFalse);
+      expect(controller.page, StepPage.results);
+      expect(controller.reference?.token, 'person');
+      expect(controller.photos, ['photo']);
+      expect(controller.selected, {'photo'});
+      expect(controller.results, ['photo']);
+      expect(controller.message, contains('No se pudo preparar'));
+    },
+  );
+
   test('old reference cleanup cannot keep a new reference loading', () async {
     controller.platform = 'ios';
     await controller.useReference('first');

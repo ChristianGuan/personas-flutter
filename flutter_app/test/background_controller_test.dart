@@ -292,6 +292,23 @@ void main() {
   );
 
   test(
+    'new search rejects a pending snapshot of the previous results',
+    () async {
+      await controller.initialize();
+      final pending = Completer<Json>();
+      bridge.handlers['searchSnapshot'] = (_) => pending.future;
+      final resuming = controller.resume(openResults: true);
+      await controller.newSearch();
+      pending.complete(snapshot());
+      await resuming;
+      expect(controller.page, StepPage.reference);
+      expect(controller.reference, isNull);
+      expect(controller.photos, isEmpty);
+      expect(controller.results, isEmpty);
+    },
+  );
+
+  test(
     'notification action opens the native result and retained selection excludes rejected photos',
     () async {
       await controller.initialize();
