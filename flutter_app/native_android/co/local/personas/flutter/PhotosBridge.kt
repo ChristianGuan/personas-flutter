@@ -41,6 +41,7 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
     private val previews=Semaphore(2)
     private var job: Job?=null
     private var notificationRequest: MethodChannel.Result?=null
+    private val photoAccessPrefs=activity.getSharedPreferences("personas-photo-access",Context.MODE_PRIVATE)
     private val notificationPrefs=activity.getSharedPreferences("personas-notifications",Context.MODE_PRIVATE)
     private val analysisListener: (Map<String,Any?>)->Unit={event -> sink?.success(event)}
     private var picker: MethodChannel.Result?=null
@@ -93,7 +94,7 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
     fun notificationsResult() {notificationRequest?.success(notifications());notificationRequest=null}
     override fun onMethodCall(call: MethodCall,result: MethodChannel.Result) {
         try {when(call.method) {
-            "initialize" -> async(result) {mapOf("platform" to "android","access" to access(),"incoming" to incoming.map(Uri::toString),
+            "initialize" -> async(result) {mapOf("platform" to "android","access" to access(),"photoAccessAsked" to photoAccessPrefs.getBoolean("asked",false),"incoming" to incoming.map(Uri::toString),
                 "notifications" to notifications(),"backgroundMode" to "androidService","search" to runtime.snapshot()).also {incoming=emptyList()}}
             "searchSnapshot" -> async(result) {runtime.snapshot()}
             "updateSearch" -> async(result) {runtime.update(call.arguments as Map<String,Any?>);null}
@@ -118,6 +119,7 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
             "albums" -> async(result) {catalog()}
             "requestAccess" -> {
                 check(accessRequest==null);accessRequest=result
+                photoAccessPrefs.edit().putBoolean("asked",true).apply()
                 try {activity.requestAccess()} catch(e: Exception) {accessRequest=null;throw e}
             }
             "albumPhotos" -> async(result) {albums.photos(key(call.argument<String>("id")!!)).map(Uri::toString)}
@@ -142,10 +144,14 @@ class PhotosBridge(private val activity: MainActivity,messenger: BinaryMessenger
             "releaseReference" -> {refs.remove(call.argument<String>("token"));result.success(null)}
             "image" -> async(result) {previews.withPermit {withContext(Dispatchers.IO) {
                 val edge=(call.argument<Int>("edge") ?: 512).coerceIn(64,1600)
-                val bitmap=ContentPhotos(activity.contentResolver,edge).decode(uri(call.argument<String>("id")!!))
+                val crop=call.argument<List<Number>>("crop")
+                // Preserve face detail before cropping; album thumbnails keep their small decode.
+                val faceFraction=if(crop!=null && crop.size==4) minOf(crop[2].toDouble(),crop[3].toDouble()) else 1.0
+                val sourceEdge=if(faceFraction.isFinite() && faceFraction>0 && crop!=null)
+                    (edge/faceFraction.coerceAtLeast(0.01)).toInt().coerceIn(edge,3200) else edge
+                val bitmap=ContentPhotos(activity.contentResolver,sourceEdge).decode(uri(call.argument<String>("id")!!))
                 var cropped: Bitmap?=null
                 try {
-                    val crop=call.argument<List<Number>>("crop")
                     val display=if(crop!=null && crop.size==4) {
                         val x=crop[0].toFloat()*bitmap.width;val y=crop[1].toFloat()*bitmap.height
                         faceThumbnail(bitmap,RectF(x,y,x+crop[2].toFloat()*bitmap.width,y+crop[3].toFloat()*bitmap.height)).also {cropped=it}

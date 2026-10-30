@@ -48,8 +48,21 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
   late final SearchController c;
+  late StepPage previousPage;
+  bool resultsMenuOpen = false;
+
+  void scheduleResultsMenu() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && c.page == StepPage.results && !resultsMenuOpen) {
+        unawaited(openResultsMenu());
+      }
+    });
+  }
+
   AnalyticsService? analytics;
   bool incomingOpen = false, showDiscarded = false;
+  bool showMatches = true, showPending = true;
+  final Set<String> pendingSelection = {};
   @override
   void initState() {
     super.initState();
@@ -64,12 +77,23 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     c =
         widget.controller ??
         SearchController(NativePhotoBridge(), analytics: analytics);
+    previousPage = c.page;
+    if (c.page == StepPage.results) scheduleResultsMenu();
     c.addListener(changed);
     if (widget.controller == null) unawaited(c.initialize());
   }
 
   void changed() {
     if (!mounted) return;
+    if (c.page == StepPage.results && previousPage != StepPage.results)
+      scheduleResultsMenu();
+    previousPage = c.page;
+    pendingSelection.retainAll(c.pending.map((review) => review.id));
+    if (c.page != StepPage.results && c.page != StepPage.analysis) {
+      showMatches = true;
+      showPending = true;
+      pendingSelection.clear();
+    }
     setState(() {});
     if (c.page == StepPage.results)
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -99,6 +123,7 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     c.removeListener(changed);
+    clearThumbnailCache(c.bridge);
     if (widget.controller == null) c.dispose();
     if (widget.controller == null) analytics?.dispose();
     super.dispose();
@@ -221,7 +246,10 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
         ],
       ),
     );
-    if (confirmed == true) await c.clear();
+    if (confirmed == true) {
+      clearThumbnailCache(c.bridge);
+      await c.clear();
+    }
   }
 
   Future<void> cloud({bool reference = false, bool append = false}) async {
@@ -364,66 +392,6 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
       ],
     );
   }
-
-  Widget backgroundNote({bool showHeading = true}) => BackgroundNote(
-    showHeading: showHeading,
-    mode: c.backgroundMode,
-    enabled: c.notificationsEnabled,
-    asking: c.askingNotifications,
-    canAsk: c.canAskNotifications,
-    onEnable: () => c.requestNotifications(),
-  );
-
-  Future<void> scanSpeedPopup() => showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      scrollable: true,
-      title: const Text('Tu primer escaneo'),
-      content: const Text(ScanSpeedNote.message),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Entendido'),
-        ),
-      ],
-    ),
-  );
-
-  Future<void> backgroundPopup() => showDialog<void>(
-    context: context,
-    builder: (dialogContext) => ListenableBuilder(
-      listenable: c,
-      builder: (context, _) => AlertDialog(
-        scrollable: true,
-        title: const Text('Puedes cambiar de app'),
-        content: backgroundNote(showHeading: false),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget analysisInformation() => Wrap(
-    spacing: 8,
-    runSpacing: 4,
-    children: [
-      TextButton.icon(
-        onPressed: scanSpeedPopup,
-        icon: const Icon(Icons.speed_outlined),
-        label: const Text('Tu primer escaneo'),
-      ),
-      if (c.backgroundMode.isNotEmpty)
-        TextButton.icon(
-          onPressed: backgroundPopup,
-          icon: const Icon(Icons.info_outline),
-          label: const Text('Puedes cambiar de app'),
-        ),
-    ],
-  );
 
   Widget referencePicker() => HalladinReferencePicker(
     hasReference: c.reference != null,
@@ -690,7 +658,7 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
           ),
-          if (c.access == 'none')
+          if (c.access == 'none' && !c.loadingAlbums)
             section(
               EmptyMessage(
                 'Permite ver tus álbumes',
@@ -849,49 +817,62 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               ],
             ),
           ),
-          section(analysisInformation()),
         ];
       case StepPage.analysis:
       case StepPage.results:
         return [
-          section(
-            searchHeading(
-              c.cancelling
-                  ? 'Deteniendo la búsqueda'
-                  : c.analysing
-                  ? 'Encontrando tus momentos'
-                  : c.cancelled
-                  ? 'Búsqueda cancelada'
-                  : 'Tus momentos, reunidos',
-              c.cancelling
-                  ? 'Estamos terminando la foto en curso. Conservarás los resultados encontrados.'
-                  : c.analysing
-                  ? 'Puedes cancelar y conservar lo que encontremos.'
-                  : 'Revisa tus fotos y elige las que quieres compartir.',
-            ),
-          ),
-          if (!c.analysing && !c.cancelling && !c.cancelled)
+          if (c.page == StepPage.analysis)
             section(
-              Text(
-                'Posibles coincidencias',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium,
+              searchHeading(
+                c.cancelling
+                    ? 'Deteniendo la búsqueda'
+                    : c.analysing
+                    ? 'Encontrando tus momentos'
+                    : c.cancelled
+                    ? 'Búsqueda cancelada'
+                    : 'Tus momentos, reunidos',
+                c.cancelling
+                    ? 'Estamos terminando la foto en curso. Conservarás los resultados encontrados.'
+                    : c.analysing
+                    ? 'Puedes cancelar y conservar lo que encontremos.'
+                    : 'Revisa tus fotos y elige las que quieres compartir.',
               ),
             ),
-          section(HalladinPanel(child: contextSummary())),
+          if (c.page == StepPage.analysis)
+            section(HalladinPanel(child: contextSummary())),
           if (c.analysing) ...[
             section(
               ScanProgress(processed: c.processed, total: c.photos.length),
             ),
-            section(analysisInformation()),
           ],
           section(
-            Text(
-              '${c.results.length} ${c.results.length == 1 ? 'coincidencia' : 'coincidencias'}',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
+                if (c.page == StepPage.results)
+                  Text(
+                    c.cancelled ? 'Escaneo cancelado ·' : 'Escaneo completo ·',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w400,
+                      fontSize: 14,
+                    ),
+                  ),
+                resultSectionToggle(
+                  '${c.results.length} ${c.results.length == 1 ? 'coincidencia' : 'coincidencias'}',
+                  showMatches,
+                  () => setState(() => showMatches = !showMatches),
+                  compact: c.page == StepPage.results,
+                ),
+              ],
             ),
           ),
-          photoGrid(results.length, (index) => resultTile(results[index])),
+          if (showMatches)
+            photoGrid(
+              results.length,
+              (index) => resultTile(results[index]),
+              matches: true,
+            ),
           if (c.analytics?.enabled == true && c.ratingAvailable)
             section(
               Column(
@@ -1007,12 +988,61 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
             ),
           if (!c.analysing && c.pending.isNotEmpty) ...[
             section(
-              heading(
+              resultSectionToggle(
                 'Por revisar (${c.pending.length})',
-                'Estas fotos se comparten sólo si confirmas que aparece la persona.',
+                showPending,
+                () => setState(() => showPending = !showPending),
               ),
             ),
-            photoGrid(pending.length, (index) => reviewTile(pending[index])),
+            if (showPending) ...[
+              section(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Selecciona las fotos en las que aparece la persona para pasarlas a coincidencias.',
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('Seleccionar todas por revisar'),
+                      value: pendingSelection.isEmpty
+                          ? false
+                          : pendingSelection.length == pending.length
+                          ? true
+                          : null,
+                      tristate: true,
+                      onChanged: c.blocked
+                          ? null
+                          : (_) => setState(() {
+                              if (pendingSelection.length == pending.length) {
+                                pendingSelection.clear();
+                              } else {
+                                pendingSelection.addAll(
+                                  pending.map((review) => review.id),
+                                );
+                              }
+                            }),
+                    ),
+                    FilledButton.icon(
+                      onPressed: c.blocked || pendingSelection.isEmpty
+                          ? null
+                          : () {
+                              c.confirmPending(
+                                Set<String>.of(pendingSelection),
+                              );
+                              setState(() => pendingSelection.clear());
+                            },
+                      icon: const Icon(Icons.playlist_add_check_rounded),
+                      label: Text(
+                        'Pasar a coincidencias (${pendingSelection.length})',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              photoGrid(pending.length, (index) => reviewTile(pending[index])),
+            ],
           ],
           if (!c.analysing && c.reviews.isNotEmpty) ...[
             section(
@@ -1051,16 +1081,52 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     }
   }
 
+  Widget resultSectionToggle(
+    String title,
+    bool expanded,
+    VoidCallback toggle, {
+    bool compact = false,
+  }) => Semantics(
+    expanded: expanded,
+    child: TextButton.icon(
+      onPressed: toggle,
+      style: TextButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        backgroundColor: compact
+            ? Colors.transparent
+            : HalladinColors.focusSurface.withValues(alpha: .5),
+        textStyle: Theme.of(
+          context,
+        ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      icon: Icon(
+        expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+      ),
+      label: Text(
+        compact ? title : '$title · ${expanded ? 'Ocultar' : 'Mostrar'}',
+      ),
+    ),
+  );
+
   Widget photoGrid(
     int count,
     Widget Function(int) builder, {
     bool album = false,
+    bool matches = false,
   }) => SliverLayoutBuilder(
     builder: (context, constraints) {
       final large = MediaQuery.textScalerOf(context).scale(16) > 22;
       final columns = math.max(
         1,
-        ((constraints.crossAxisExtent - 40 + 12) / (large ? 252 : 156)).floor(),
+        ((constraints.crossAxisExtent - 40 + 12) /
+                (large
+                    ? 252
+                    : matches
+                    ? 140
+                    : 156))
+            .floor(),
       );
       final width =
           (constraints.crossAxisExtent - 40 - (columns - 1) * 12) / columns;
@@ -1079,11 +1145,14 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                               MediaQuery.textScalerOf(context).scale(16) * 10,
                             )
                           : 152)
+                : matches
+                ? width * .85
                 : width + (large ? 100 : 64),
           ),
           delegate: SliverChildBuilderDelegate(
             (_, i) => builder(i),
             childCount: count,
+            addAutomaticKeepAlives: false,
           ),
         ),
       );
@@ -1094,36 +1163,91 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
     return SelectionSurface(
       key: ValueKey('result:$id'),
       selected: selected,
-      child: Column(
+      radius: 16,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Expanded(
-            child: Semantics(
-              button: true,
-              key: ValueKey('result-preview:$id'),
-              label: 'Coincidencia. Tocar para ver imagen completa',
-              child: InkWell(
-                onTap: () => preview(id),
-                child: SizedBox.expand(
-                  child: NativePhoto(bridge: c.bridge, id: id),
+          Semantics(
+            button: true,
+            key: ValueKey('result-preview:$id'),
+            label: 'Coincidencia. Tocar para ver imagen completa',
+            child: InkWell(
+              onTap: () => preview(id),
+              child: NativePhoto(bridge: c.bridge, id: id),
+            ),
+          ),
+          Positioned(
+            left: 6,
+            bottom: 6,
+            right: 6,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xffedf8ff).withValues(alpha: .96),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: HalladinSurfaces.shadow(),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 5,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: HalladinColors.turquoise,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(3),
+                          child: Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          'Coincidencia',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                color: HalladinColors.night,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-          CheckboxListTile(
-            checkboxShape: const CircleBorder(),
-            activeColor: HalladinColors.turquoise,
-            checkColor: HalladinColors.night,
-            side: BorderSide(
-              color: selected
-                  ? HalladinColors.turquoise
-                  : HalladinColors.night.withValues(alpha: .35),
-              width: 1.5,
+          Positioned(
+            right: 4,
+            top: 4,
+            child: Tooltip(
+              message: selected ? 'Quitar foto de selección' : 'Elegir foto',
+              child: Material(
+                color: Colors.white.withValues(alpha: .94),
+                shape: const CircleBorder(),
+                child: SizedBox.square(
+                  dimension: 44,
+                  child: Checkbox(
+                    shape: const CircleBorder(),
+                    value: selected,
+                    semanticLabel: selected ? 'Foto elegida' : 'Elegir foto',
+                    onChanged: c.blocked ? null : (_) => c.toggle(id),
+                  ),
+                ),
+              ),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            controlAffinity: ListTileControlAffinity.leading,
-            value: selected,
-            onChanged: c.blocked ? null : (_) => c.toggle(id),
-            title: Text(selected ? 'Elegida' : 'Elegir'),
           ),
         ],
       ),
@@ -1145,18 +1269,96 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              review.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          if (review.pending)
+            CheckboxListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              controlAffinity: ListTileControlAffinity.leading,
+              value: pendingSelection.contains(review.id),
+              onChanged: c.blocked
+                  ? null
+                  : (_) => setState(() {
+                      if (!pendingSelection.add(review.id))
+                        pendingSelection.remove(review.id);
+                    }),
+              title: Text(
+                pendingSelection.contains(review.id)
+                    ? 'Seleccionada'
+                    : 'Por revisar',
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                review.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
         ],
       ),
     ),
   );
+
+  Future<void> openResultsMenu() async {
+    if (resultsMenuOpen || c.page != StepPage.results) return;
+    setState(() => resultsMenuOpen = true);
+    try {
+      await showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Cerrar acciones de fotos',
+        barrierColor: HalladinColors.night.withValues(alpha: .20),
+        transitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 320),
+        transitionBuilder: (context, animation, secondary, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(.08, .05),
+                end: Offset.zero,
+              ).animate(curved),
+              child: ScaleTransition(
+                alignment: Alignment.bottomRight,
+                scale: Tween<double>(begin: .9, end: 1).animate(curved),
+                child: child,
+              ),
+            ),
+          );
+        },
+        pageBuilder: (dialogContext, animation, secondary) => ListenableBuilder(
+          listenable: c,
+          builder: (context, _) => HalladinResultsMenu(
+            selected: c.selected.length,
+            total: c.results.length,
+            canRepeat: c.photos.isNotEmpty && !c.blocked,
+            enabled: !c.blocked,
+            onRepeat: () {
+              Navigator.pop(dialogContext);
+              c.navigate(StepPage.reference);
+            },
+            onNewSearch: () async {
+              Navigator.pop(dialogContext);
+              await c.newSearch();
+              if (mounted) setState(() => showDiscarded = false);
+            },
+            onToggleAll: c.toggleAll,
+            onShare: () => c.share(),
+            onClose: () => Navigator.pop(dialogContext),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => resultsMenuOpen = false);
+    }
+  }
 
   Widget bottomBar() {
     final Widget action = c.canCancelPreparation
@@ -1232,100 +1434,6 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (c.page == StepPage.results && c.results.isNotEmpty)
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final all = c.selected.length == c.results.length;
-                      final label = all
-                          ? 'Deseleccionar todas'
-                          : 'Seleccionar todas';
-                      final compact =
-                          MediaQuery.textScalerOf(context).scale(16) > 22 ||
-                          constraints.maxWidth < 260;
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: compact ? 4 : 10),
-                        child: Row(
-                          children: [
-                            const Spacer(),
-                            Expanded(
-                              flex: 3,
-                              child: Tooltip(
-                                message: label,
-                                child: TextButton(
-                                  onPressed: c.blocked ? null : c.toggleAll,
-                                  style: TextButton.styleFrom(
-                                    minimumSize: const Size(48, 44),
-                                    foregroundColor: all
-                                        ? HalladinColors.tealInk
-                                        : HalladinColors.night,
-                                    backgroundColor: all
-                                        ? HalladinColors.selectionSurface
-                                        : Colors.transparent,
-                                    disabledForegroundColor:
-                                        HalladinColors.disabledInk,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 4,
-                                    ),
-                                    textStyle: Theme.of(context)
-                                        .textTheme
-                                        .labelLarge
-                                        ?.copyWith(
-                                          fontSize: 13,
-                                          height: 1.2,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
-                                  child: Text(
-                                    compact
-                                        ? (all ? 'Quitar' : 'Todas')
-                                        : label,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Semantics(
-                                label:
-                                    '${c.selected.length} ${c.selected.length == 1 ? 'foto seleccionada' : 'fotos seleccionadas'}',
-                                child: ExcludeSemantics(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(left: 8),
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      alignment: Alignment.centerRight,
-                                      child: Text(
-                                        '${c.selected.length} ${c.selected.length == 1 ? 'foto' : 'fotos'}',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.labelLarge,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                if (c.page == StepPage.results)
-                  Center(
-                    child: OutlinedButton.icon(
-                      onPressed: c.blocked
-                          ? null
-                          : () async {
-                              await c.newSearch();
-                              if (mounted && c.page == StepPage.reference) {
-                                setState(() => showDiscarded = false);
-                              }
-                            },
-                      icon: const Icon(Icons.person_search_outlined),
-                      label: const Text('Nueva búsqueda'),
-                    ),
-                  ),
                 if ((c.blocked && c.page == StepPage.reference) || c.picking)
                   const Padding(
                     padding: EdgeInsets.only(bottom: 8),
@@ -1440,15 +1548,18 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
           ? null
           : AppBar(
               backgroundColor: HalladinColors.night,
+              toolbarHeight: c.page == StepPage.results ? 72 : null,
               automaticallyImplyLeading: false,
-              leading: c.page == StepPage.home
+              leading: c.page == StepPage.home || c.page == StepPage.results
                   ? null
                   : IconButton(
                       tooltip: 'Volver',
                       onPressed: back,
                       icon: const Icon(Icons.arrow_back),
                     ),
-              title: c.page == StepPage.home
+              title: c.page == StepPage.results
+                  ? const HalladinBrand(compact: true)
+                  : c.page == StepPage.home
                   ? null
                   : Text(
                       c.page == StepPage.reference
@@ -1459,13 +1570,28 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                     ),
               actions: [
                 if (analytics != null)
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: HalladinColors.ivory,
+                  if (MediaQuery.sizeOf(context).width >= 380)
+                    TextButton.icon(
+                      onPressed: analyticsDialog,
+                      style: TextButton.styleFrom(
+                        foregroundColor: HalladinColors.ivory,
+                      ),
+                      icon: const Icon(Icons.privacy_tip_outlined),
+                      label: const Text('Analítica'),
+                    )
+                  else
+                    IconButton(
+                      tooltip: 'Analítica',
+                      onPressed: analyticsDialog,
+                      icon: const Icon(Icons.privacy_tip_outlined),
                     ),
-                    onPressed: analyticsDialog,
-                    icon: const Icon(Icons.privacy_tip_outlined),
-                    label: const Text('Analítica'),
+                if (c.page == StepPage.results)
+                  PopupMenuButton<String>(
+                    tooltip: 'Opciones de resultados',
+                    onSelected: (_) => back(),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'back', child: Text('Volver')),
+                    ],
                   ),
               ],
             ),
@@ -1498,8 +1624,7 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
                 ? HalladinColors.ivory
                 : Theme.of(context).colorScheme.surface,
             // Keep the branded header attached while dragging at the top on iOS.
-            child: CustomScrollView(
-              physics: const ClampingScrollPhysics(),
+            child: HalladinScrollView(
               key: ValueKey(c.page),
               slivers: [
                 ...content(),
@@ -1514,7 +1639,14 @@ class _SearchPageState extends State<SearchPage> with WidgetsBindingObserver {
           ),
         ),
       ),
-      bottomNavigationBar: bottomBar(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: c.page == StepPage.results
+          ? HalladinMenuLauncher(
+              onPressed: openResultsMenu,
+              active: !resultsMenuOpen,
+            )
+          : null,
+      bottomNavigationBar: c.page == StepPage.results ? null : bottomBar(),
     ),
   );
 }

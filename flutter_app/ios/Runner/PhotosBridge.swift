@@ -84,6 +84,7 @@ final class PhotosBridge: NSObject, FlutterPlugin, FlutterStreamHandler, PHPicke
             consumeInbox()
             session.load { AnalysisNotifications.status { notifications in
                 result(["platform": "ios", "access": store.access, "incoming": self.incoming,
+                        "photoAccessAsked": PHPhotoLibrary.authorizationStatus(for: .readWrite) != .notDetermined,
                         "notifications": notifications, "backgroundMode": BackgroundAnalysis.capability,
                         "search": self.session.value as Any? ?? NSNull()])
                 self.incoming = []

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'app_theme.dart';
 
 class BackgroundNote extends StatelessWidget {
@@ -387,41 +389,58 @@ class SelectionMark extends StatelessWidget {
   );
 }
 
-class ScanSpeedNote extends StatelessWidget {
-  const ScanSpeedNote({super.key});
-  static const message =
-      'El primer escaneo de un álbum puede tardar un poco más. '
-      'Si vuelves a buscar en las mismas fotos durante esta sesión, '
-      'el reconocimiento puede ser más rápido.';
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context), colors = theme.colorScheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: colors.primary, width: 3)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Tu primer escaneo', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 6),
-            const Text(message),
-          ],
-        ),
-      ),
-    );
-  }
+/// Estimate only after enough completed photos and time to avoid startup noise.
+Duration? estimateScanRemaining(
+  int completed,
+  int remaining,
+  Duration elapsed,
+) {
+  if (remaining <= 0) return Duration.zero;
+  if (completed < 3 || elapsed.inMilliseconds < 1000) return null;
+  return Duration(
+    milliseconds: (elapsed.inMilliseconds * remaining / completed).ceil(),
+  );
 }
 
-class ScanProgress extends StatelessWidget {
+class ScanProgress extends StatefulWidget {
   final int processed, total;
   const ScanProgress({super.key, required this.processed, required this.total});
 
   @override
+  State<ScanProgress> createState() => _ScanProgressState();
+}
+
+class _ScanProgressState extends State<ScanProgress> {
+  final Stopwatch clock = Stopwatch()..start();
+  late int baseline = widget.processed;
+
+  @override
+  void didUpdateWidget(ScanProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.processed < oldWidget.processed ||
+        widget.total != oldWidget.total) {
+      baseline = widget.processed;
+      clock.reset();
+    }
+  }
+
+  String get estimate {
+    final remaining = estimateScanRemaining(
+      widget.processed - baseline,
+      widget.total - widget.processed,
+      clock.elapsed,
+    );
+    if (remaining == null) return 'Calculando tiempo estimado…';
+    if (remaining == Duration.zero) return 'Terminando la búsqueda…';
+    if (remaining.inSeconds < 60)
+      return 'Tiempo restante estimado: menos de 1 min';
+    final minutes = (remaining.inSeconds / 60).ceil();
+    return 'Tiempo restante estimado: $minutes min aprox.';
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final processed = widget.processed, total = widget.total;
     final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -461,6 +480,15 @@ class ScanProgress extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             backgroundColor: colors.onPrimaryContainer.withValues(alpha: .12),
           ),
+          const SizedBox(height: 10),
+          Text(
+            estimate,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onPrimaryContainer),
+          ),
+          const SizedBox(height: 8),
+          const ScanSpeedShimmer(),
         ],
       ),
     );
@@ -1170,19 +1198,15 @@ class HalladinSelectedReference extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => HalladinPanel(
+    padding: const EdgeInsets.all(16),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '1. Foto de referencia',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 20),
         LayoutBuilder(
           builder: (context, constraints) {
             final portrait = SizedBox(
-              width: 112,
-              height: 120,
+              width: 88,
+              height: 100,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -1228,7 +1252,7 @@ class HalladinSelectedReference extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Persona seleccionada',
+                  '1. Foto de referencia',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -1237,20 +1261,21 @@ class HalladinSelectedReference extends StatelessWidget {
                 Text(
                   referenceCount > 1
                       ? '$referenceCount referencias confirmadas'
-                      : 'Tu persona elegida',
+                      : 'Persona seleccionada',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
+                const SizedBox(height: 8),
+                HalladinSecondaryAction(
+                  compact: true,
+                  title: 'Cambiar foto',
+                  icon: Icons.photo_library_rounded,
                   onPressed: onChange,
-                  icon: const Icon(Icons.photo_outlined),
-                  label: const Text('Cambiar foto'),
                 ),
               ],
             );
-            return constraints.maxWidth < 285 ||
+            return constraints.maxWidth < 245 ||
                     MediaQuery.textScalerOf(context).scale(16) > 22
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1263,7 +1288,7 @@ class HalladinSelectedReference extends StatelessWidget {
                 : Row(
                     children: [
                       portrait,
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 14),
                       Expanded(child: details),
                     ],
                   );
@@ -1456,4 +1481,631 @@ class HalladinSecondaryAction extends StatelessWidget {
             ),
     );
   }
+}
+
+/// A dimensional brand cue shown only when the viewport has more content below.
+class HalladinScrollView extends StatefulWidget {
+  final List<Widget> slivers;
+  const HalladinScrollView({super.key, required this.slivers});
+  @override
+  State<HalladinScrollView> createState() => _HalladinScrollViewState();
+}
+
+class _HalladinScrollViewState extends State<HalladinScrollView> {
+  final controller = ScrollController();
+  bool showHint = false, scrolling = false;
+
+  void updateHint(ScrollMetrics metrics) {
+    final visible = metrics.extentAfter > 8 && !scrolling;
+    if (visible == showHint) return;
+    setState(() => showHint = visible);
+  }
+
+  void advance() {
+    if (!controller.hasClients) return;
+    final position = controller.position;
+    final target = (position.pixels + position.viewportDimension * .65).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (MediaQuery.disableAnimationsOf(context)) {
+      controller.jumpTo(target);
+    } else {
+      controller.animateTo(
+        target,
+        duration: const Duration(milliseconds: 350),
+        curve: PersonasMotion.curve,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => NotificationListener<ScrollMetricsNotification>(
+    onNotification: (notification) {
+      if (notification.depth == 0) updateHint(notification.metrics);
+      return false;
+    },
+    child: NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0) {
+          if (notification is ScrollStartNotification) scrolling = true;
+          if (notification is ScrollEndNotification) scrolling = false;
+          updateHint(notification.metrics);
+        }
+        return false;
+      },
+      child: Stack(
+        children: [
+          CustomScrollView(
+            // Preload only a short distance beyond the visible rows.
+            scrollCacheExtent: const ScrollCacheExtent.pixels(160),
+            controller: controller,
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              ...widget.slivers,
+              const SliverToBoxAdapter(child: SizedBox(height: 68)),
+            ],
+          ),
+          Positioned.fill(
+            right: 16,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IgnorePointer(
+                ignoring: !showHint,
+                child: ExcludeSemantics(
+                  excluding: !showHint,
+                  child: AnimatedOpacity(
+                    opacity: showHint ? .65 : 0,
+                    duration: scrolling
+                        ? Duration.zero
+                        : PersonasMotion.duration(context),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xffeceff1).withValues(alpha: .8),
+                        border: Border.all(
+                          color: const Color(0xff9aa0a6).withValues(alpha: .5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .08),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        tooltip: 'Ver más abajo',
+                        onPressed: advance,
+                        iconSize: 28,
+                        color: const Color(0xff62676e),
+                        icon: const Icon(
+                          Icons.keyboard_double_arrow_down_rounded,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// A brief glint every seven seconds, without a continuously running ticker.
+class ScanSpeedShimmer extends StatefulWidget {
+  static const message =
+      'El primer escaneo puede tardar más. Las siguientes búsquedas en las mismas fotos durante esta sesión pueden ser más rápidas.';
+  const ScanSpeedShimmer({super.key});
+  @override
+  State<ScanSpeedShimmer> createState() => _ScanSpeedShimmerState();
+}
+
+class _ScanSpeedShimmerState extends State<ScanSpeedShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  );
+  Timer? timer;
+  bool reducedMotion = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    reducedMotion = MediaQuery.disableAnimationsOf(context);
+    timer?.cancel();
+    if (reducedMotion) {
+      controller.stop();
+      controller.value = 0;
+    } else {
+      timer = Timer.periodic(const Duration(seconds: 7), (_) {
+        if (mounted && TickerMode.valuesOf(context).enabled) controller.forward(from: 0);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: AnimatedBuilder(
+      animation: controller,
+      child: Text(
+        ScanSpeedShimmer.message,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+        ),
+      ),
+      builder: (context, child) => ShaderMask(
+        blendMode: BlendMode.srcATop,
+        shaderCallback: (bounds) =>
+            const LinearGradient(
+              colors: [
+                Colors.transparent,
+                Color(0x99fed73e),
+                Colors.transparent,
+              ],
+              stops: [0, .5, 1],
+            ).createShader(
+              Rect.fromLTWH(
+                bounds.left -
+                    bounds.width +
+                    bounds.width * 3 * controller.value,
+                bounds.top,
+                bounds.width * .65,
+                bounds.height,
+              ),
+            ),
+        child: child,
+      ),
+    ),
+  );
+}
+
+class HalladinResultsMenu extends StatelessWidget {
+  final int selected, total;
+  final bool canRepeat, enabled;
+  final VoidCallback onRepeat, onNewSearch, onToggleAll, onShare, onClose;
+  const HalladinResultsMenu({
+    super.key,
+    required this.selected,
+    required this.total,
+    required this.canRepeat,
+    required this.enabled,
+    required this.onRepeat,
+    required this.onNewSearch,
+    required this.onToggleAll,
+    required this.onShare,
+    required this.onClose,
+  });
+
+  Widget action(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color tint,
+    VoidCallback? onPressed, {
+    String? subtitle,
+    String? tooltip,
+  }) => Tooltip(
+    message: tooltip ?? title,
+    child: TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: HalladinColors.night,
+        disabledForegroundColor: HalladinColors.disabledInk,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        alignment: Alignment.centerLeft,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [tint.withValues(alpha: .45), tint],
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 21,
+              color: onPressed == null
+                  ? HalladinColors.disabledInk
+                  : HalladinColors.night,
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: title.startsWith('Buscar de nuevo') ? 12 : 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (subtitle != null)
+                  Semantics(
+                    label:
+                        title == 'Seleccionar todas' ||
+                            title == 'Deseleccionar todas'
+                        ? '$selected ${selected == 1 ? 'foto seleccionada' : 'fotos seleccionadas'}'
+                        : subtitle,
+                    excludeSemantics: true,
+                    child: Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w400,
+                        color: HalladinColors.muted,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget accessibleList(BuildContext context) => SafeArea(
+    child: Dialog(
+      alignment: Alignment.bottomRight,
+      insetPadding: const EdgeInsets.fromLTRB(16, 72, 12, 12),
+      backgroundColor: const Color(0xfffffef9),
+      surfaceTintColor: Colors.transparent,
+      elevation: 14,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(42),
+          topRight: Radius.elliptical(180, 230),
+          bottomLeft: Radius.circular(40),
+          bottomRight: Radius.elliptical(130, 150),
+        ),
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 272,
+          maxHeight: (MediaQuery.sizeOf(context).height - 120).clamp(180, 700),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 38, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      action(
+                        context,
+                        'Buscar de nuevo en el mismo álbum',
+                        Icons.find_replace_rounded,
+                        const Color(0xffe8e2ff),
+                        enabled && canRepeat ? onRepeat : null,
+                        subtitle: 'Cambia de persona',
+                      ),
+                      action(
+                        context,
+                        'Nueva búsqueda',
+                        Icons.search_rounded,
+                        const Color(0xffd9efff),
+                        enabled ? onNewSearch : null,
+                      ),
+                      action(
+                        context,
+                        selected == total && total > 0
+                            ? 'Deseleccionar todas'
+                            : 'Seleccionar todas',
+                        selected == total && total > 0
+                            ? Icons.deselect_rounded
+                            : Icons.check_box_outlined,
+                        const Color(0xffb4f8e6),
+                        enabled && total > 0 ? onToggleAll : null,
+                        subtitle:
+                            '$selected ${selected == 1 ? 'seleccionada' : 'seleccionadas'}',
+                      ),
+                      action(
+                        context,
+                        'Compartir fotos',
+                        Icons.ios_share_rounded,
+                        const Color(0xffd9efff),
+                        enabled && selected > 0 ? onShare : null,
+                        subtitle: selected == 0
+                            ? 'Selecciona al menos una foto para compartir'
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: HalladinSurfaces.action,
+                    boxShadow: HalladinSurfaces.shadow(raised: true),
+                  ),
+                  child: IconButton(
+                    onPressed: onClose,
+                    tooltip: 'Cerrar acciones',
+                    padding: const EdgeInsets.all(14),
+                    color: HalladinColors.night,
+                    icon: const Icon(Icons.close_rounded, size: 32),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.textScalerOf(context).scale(14) > 19 ||
+        MediaQuery.sizeOf(context).height < 600)
+      return accessibleList(context);
+    final width = (MediaQuery.sizeOf(context).width * .60).clamp(224.0, 280.0);
+    final height = width * 1.72;
+    Widget row(double top, double inset, Widget child) => Positioned(
+      top: height * top,
+      left: width * inset,
+      right: 8,
+      child: child,
+    );
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: PhysicalShape(
+                    clipper: const _ResultsSemicircle(),
+                    color: const Color(0xfffffef9),
+                    elevation: 14,
+                    shadowColor: HalladinColors.night.withValues(alpha: .25),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+                row(
+                  .16,
+                  .28,
+                  action(
+                    context,
+                    'Buscar de nuevo en el mismo álbum',
+                    Icons.find_replace_rounded,
+                    const Color(0xffe8e2ff),
+                    enabled && canRepeat ? onRepeat : null,
+                    subtitle: 'Cambia de persona',
+                  ),
+                ),
+                row(
+                  .36,
+                  .11,
+                  action(
+                    context,
+                    'Nueva búsqueda',
+                    Icons.search_rounded,
+                    const Color(0xffd9efff),
+                    enabled ? onNewSearch : null,
+                  ),
+                ),
+                row(
+                  .53,
+                  .065,
+                  action(
+                    context,
+                    selected == total && total > 0
+                        ? 'Deseleccionar todas'
+                        : 'Seleccionar todas',
+                    selected == total && total > 0
+                        ? Icons.deselect_rounded
+                        : Icons.check_box_outlined,
+                    const Color(0xffb4f8e6),
+                    enabled && total > 0 ? onToggleAll : null,
+                    subtitle:
+                        '$selected ${selected == 1 ? 'seleccionada' : 'seleccionadas'}',
+                  ),
+                ),
+                row(
+                  .70,
+                  .20,
+                  action(
+                    context,
+                    'Compartir fotos',
+                    Icons.ios_share_rounded,
+                    const Color(0xffd9efff),
+                    enabled && selected > 0 ? onShare : null,
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 12,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: HalladinSurfaces.action,
+                      boxShadow: HalladinSurfaces.shadow(raised: true),
+                    ),
+                    child: IconButton(
+                      onPressed: onClose,
+                      tooltip: 'Cerrar acciones',
+                      padding: const EdgeInsets.all(13),
+                      color: HalladinColors.night,
+                      icon: const Icon(Icons.close_rounded, size: 30),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Left half of an ellipse, flush with the right edge of the screen.
+class _ResultsSemicircle extends CustomClipper<Path> {
+  const _ResultsSemicircle();
+  @override
+  Path getClip(Size size) => Path()
+    ..moveTo(size.width, 0)
+    ..cubicTo(
+      size.width * .4477,
+      0,
+      0,
+      size.height * .22385,
+      0,
+      size.height * .5,
+    )
+    ..cubicTo(
+      0,
+      size.height * .77615,
+      size.width * .4477,
+      size.height,
+      size.width,
+      size.height,
+    )
+    ..close();
+  @override
+  bool shouldReclip(_ResultsSemicircle oldClipper) => false;
+}
+
+/// A brief invitation to reopen the menu; idle between pulses.
+class HalladinMenuLauncher extends StatefulWidget {
+  final VoidCallback onPressed;
+  final bool active;
+  const HalladinMenuLauncher({
+    super.key,
+    required this.onPressed,
+    required this.active,
+  });
+  @override
+  State<HalladinMenuLauncher> createState() => _HalladinMenuLauncherState();
+}
+
+class _HalladinMenuLauncherState extends State<HalladinMenuLauncher>
+    with SingleTickerProviderStateMixin {
+  late final controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+  late final pulse = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: 1.0,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 45,
+    ),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 1.0,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 55,
+    ),
+  ]).animate(controller);
+  Timer? timer;
+
+  void configure() {
+    timer?.cancel();
+    if (!widget.active || MediaQuery.disableAnimationsOf(context)) {
+      controller.stop();
+      controller.value = 0;
+      return;
+    }
+    timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && TickerMode.valuesOf(context).enabled) controller.forward(from: 0);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    configure();
+  }
+
+  @override
+  void didUpdateWidget(HalladinMenuLauncher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) configure();
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: pulse,
+    child: FloatingActionButton(
+      tooltip: 'Acciones de fotos',
+      onPressed: widget.onPressed,
+      backgroundColor: HalladinColors.gold,
+      foregroundColor: HalladinColors.night,
+      elevation: 6,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: const BorderSide(color: HalladinColors.darkGold, width: 1),
+      ),
+      child: const Icon(Icons.tune_rounded, size: 29),
+    ),
+    builder: (context, child) => Transform.scale(
+      scale: 1 + .055 * pulse.value,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: HalladinColors.gold.withValues(
+                alpha: .12 + .28 * pulse.value,
+              ),
+              blurRadius: 12 + 12 * pulse.value,
+              spreadRadius: 1 + 5 * pulse.value,
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    ),
+  );
 }

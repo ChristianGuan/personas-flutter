@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'native_bridge.dart';
@@ -28,6 +29,37 @@ class _ImageSlots {
 }
 
 final _slots = _ImageSlots();
+
+/// Encoded thumbnails only. Full-size previews never consume this budget.
+/// The bridge owns the cache lifetime; nothing is written to disk.
+class ThumbnailCache {
+  final int maxBytes, maxEntries;
+  final _entries = LinkedHashMap<String, Uint8List>();
+  int _byteCount = 0;
+  ThumbnailCache({this.maxBytes = 8 * 1024 * 1024, this.maxEntries = 64});
+
+  Uint8List? get(String key) {
+    final bytes = _entries.remove(key);
+    if (bytes != null) _entries[key] = bytes;
+    return bytes;
+  }
+
+  void put(String key, Uint8List bytes) {
+    final previous = _entries.remove(key);
+    if (previous != null) _byteCount -= previous.lengthInBytes;
+    if (bytes.lengthInBytes > maxBytes || maxEntries <= 0) return;
+    _entries[key] = bytes;
+    _byteCount += bytes.lengthInBytes;
+    while (_byteCount > maxBytes || _entries.length > maxEntries) {
+      _byteCount -= _entries.remove(_entries.keys.first)!.lengthInBytes;
+    }
+  }
+}
+
+final _thumbnailCaches = Expando<ThumbnailCache>();
+void clearThumbnailCache(PhotoBridge bridge) => _thumbnailCaches[bridge] = null;
+ThumbnailCache _cacheFor(PhotoBridge bridge) =>
+    _thumbnailCaches[bridge] ??= ThumbnailCache();
 
 class NativePhoto extends StatefulWidget {
   final PhotoBridge bridge;
@@ -61,7 +93,8 @@ class _NativePhotoState extends State<NativePhoto> {
   @override
   void didUpdateWidget(covariant NativePhoto old) {
     super.didUpdateWidget(old);
-    if (old.id != widget.id ||
+    if (old.bridge != widget.bridge ||
+        old.id != widget.id ||
         old.edge != widget.edge ||
         old.crop.toString() != widget.crop.toString()) {
       bytes = null;
@@ -73,14 +106,23 @@ class _NativePhotoState extends State<NativePhoto> {
   Future<void> load() async {
     final request = ++generation;
     final id = widget.id, edge = widget.edge, crop = widget.crop;
+    final bridge = widget.bridge;
+    final cache = edge <= 512 ? _cacheFor(bridge) : null;
+    final cacheKey = '$id|$edge|${crop?.join(',')}';
+    final cached = cache?.get(cacheKey);
+    if (cached != null) {
+      bytes = cached;
+      return;
+    }
     await _slots.acquire();
     try {
       if (!mounted || request != generation) return;
-      final result = await widget.bridge.call<Uint8List>('image', {
+      final result = await bridge.call<Uint8List>('image', {
         'id': id,
         'edge': edge,
         if (crop != null) 'crop': crop,
       });
+      if (result != null) cache?.put(cacheKey, result);
       if (mounted && request == generation)
         setState(() {
           bytes = result;
@@ -118,6 +160,9 @@ class _NativePhotoState extends State<NativePhoto> {
                 bytes!,
                 key: ValueKey('image:$generation'),
                 fit: widget.fit,
+                filterQuality: widget.crop == null
+                    ? FilterQuality.low
+                    : FilterQuality.high,
                 gaplessPlayback: true,
               )
             : ColoredBox(

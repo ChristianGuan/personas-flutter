@@ -113,7 +113,11 @@ void main() {
     expect(find.text('Deteniendo la búsqueda'), findsOneWidget);
     bridge.event({'type': 'done', 'runId': run(), 'cancelled': true});
     await tester.pumpAndSettle();
-    expect(find.text('Búsqueda cancelada'), findsOneWidget);
+    expect(c.cancelled, true);
+    expect(c.page, StepPage.results);
+    await tester.tap(find.byTooltip('Cerrar acciones'));
+    await tester.pumpAndSettle();
+    expect(find.text('Escaneo cancelado ·'), findsOneWidget);
     expect(c.results, ['a']);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

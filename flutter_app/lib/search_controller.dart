@@ -70,7 +70,8 @@ class SearchController extends ChangeNotifier {
       });
       payload.addAll(_nativeDiagnostics);
       if (_timeToCancelMs != null) payload['timeToCancelMs'] = _timeToCancelMs!;
-      if (_cancelClock != null) payload['cancelLatencyMs'] = durationMs(_cancelClock);
+      if (_cancelClock != null)
+        payload['cancelLatencyMs'] = durationMs(_cancelClock);
       if (type == 'search_failed') payload['errorCategory'] = 'processing';
     }
     if (type == 'search_completed') {
@@ -145,6 +146,7 @@ class SearchController extends ChangeNotifier {
   List<Album> albums = [];
   Album? album;
   String access = 'none', platform = '', message = '';
+  bool photoAccessAsked = true, _requestingPhotoAccess = false;
   String backgroundMode = '';
   bool notificationsEnabled = false,
       notificationsAsked = false,
@@ -214,6 +216,7 @@ class SearchController extends ChangeNotifier {
       final j = jsonMap(await bridge.call('initialize'));
       platform = j['platform'] ?? '';
       access = j['access'] ?? 'none';
+      photoAccessAsked = j['photoAccessAsked'] as bool? ?? true;
       backgroundMode = j['backgroundMode'] as String? ?? '';
       _notificationStatus(j['notifications']);
       _restoreSnapshot(j['search'], force: true);
@@ -273,14 +276,28 @@ class SearchController extends ChangeNotifier {
     } else if (event['type'] == 'done') {
       final diagnostics = event['diagnostics'];
       if (diagnostics is Map) {
-        for (final key in ['readMs','decodeMs','engineMs','cacheHits','cacheMisses','cancelLatencyMs']) {
+        for (final key in [
+          'readMs',
+          'decodeMs',
+          'engineMs',
+          'cacheHits',
+          'cacheMisses',
+          'cancelLatencyMs',
+        ]) {
           final value = diagnostics[key];
-          if (value is int && value >= 0) _nativeDiagnostics[key] = value.clamp(0, key.startsWith('cache') ? 1000000 : 86400000);
+          if (value is int && value >= 0)
+            _nativeDiagnostics[key] = value.clamp(
+              0,
+              key.startsWith('cache') ? 1000000 : 86400000,
+            );
         }
       }
       // Native callbacks may include work suppressed after cancellation; do not claim more samples than visible photos.
-      if ((_nativeDiagnostics['cacheHits'] as int? ?? 0) + (_nativeDiagnostics['cacheMisses'] as int? ?? 0) > processed) {
-        _nativeDiagnostics.remove('cacheHits'); _nativeDiagnostics.remove('cacheMisses');
+      if ((_nativeDiagnostics['cacheHits'] as int? ?? 0) +
+              (_nativeDiagnostics['cacheMisses'] as int? ?? 0) >
+          processed) {
+        _nativeDiagnostics.remove('cacheHits');
+        _nativeDiagnostics.remove('cacheMisses');
       }
       cancelling = false;
       busy = false;
@@ -661,7 +678,15 @@ class SearchController extends ChangeNotifier {
   }
 
   Future<void> refreshAlbums({bool request = false}) async {
-    if (blocked || (page != StepPage.albums && album == null)) return;
+    if (_requestingPhotoAccess ||
+        blocked ||
+        (page != StepPage.albums && album == null))
+      return;
+    request = request || (!photoAccessAsked && access == 'none');
+    if (request) {
+      photoAccessAsked = true;
+      _requestingPhotoAccess = true;
+    }
     final generation = ++_libraryGeneration;
     final previous = album;
     loadingAlbums = true;
@@ -704,6 +729,7 @@ class SearchController extends ChangeNotifier {
         }
       }
     } finally {
+      if (request) _requestingPhotoAccess = false;
       if (generation == _libraryGeneration && !_disposed) {
         loadingAlbums = false;
         _changed();
@@ -834,7 +860,8 @@ class SearchController extends ChangeNotifier {
     try {
       await bridge.call('cancel', {'runId': _run});
     } catch (e) {
-      _cancelClock = null; _timeToCancelMs = null;
+      _cancelClock = null;
+      _timeToCancelMs = null;
       cancelling = false;
       message = _error(e);
       _changed();
@@ -849,6 +876,22 @@ class SearchController extends ChangeNotifier {
     if (old.key != null) _feedback[old.key!] = belongs;
     reviews[index] = Review(id, belongs ? 'confirmed' : 'rejected', old.key);
     if (!belongs) selected.remove(id);
+    _saveResultContext();
+    _changed();
+  }
+
+  void confirmPending(Iterable<String> ids) {
+    if (blocked) return;
+    final chosen = ids.toSet();
+    var changed = false;
+    for (var i = 0; i < reviews.length; i++) {
+      final review = reviews[i];
+      if (!review.pending || !chosen.contains(review.id)) continue;
+      if (review.key != null) _feedback[review.key!] = true;
+      reviews[i] = Review(review.id, 'confirmed', review.key);
+      changed = true;
+    }
+    if (!changed) return;
     _saveResultContext();
     _changed();
   }

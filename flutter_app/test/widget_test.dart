@@ -19,6 +19,11 @@ Future<void> revealInBody(WidgetTester tester, Finder finder) async {
   expect(finder.hitTestable(), findsOneWidget);
 }
 
+Future<void> openPhotoActions(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Acciones de fotos'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   for (final hasMatches in [true, false]) {
     testWidgets(
@@ -45,9 +50,19 @@ void main() {
         }
         await tester.pumpWidget(PersonasApp(controller: c));
         await tester.pumpAndSettle();
+        if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+          await tester.tap(find.byTooltip('Cerrar acciones'));
+          await tester.pumpAndSettle();
+        }
         await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
         await tester.pumpAndSettle();
-        final start = find.widgetWithText(OutlinedButton, 'Nueva búsqueda');
+        await openPhotoActions(tester);
+        final start = find.widgetWithText(TextButton, 'Nueva búsqueda');
+        await tester.scrollUntilVisible(
+          start,
+          100,
+          scrollable: find.byType(Scrollable).last,
+        );
         expect(start.hitTestable(), findsOneWidget);
         await tester.tap(start);
         await tester.pumpAndSettle();
@@ -75,6 +90,10 @@ void main() {
       );
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
+      if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Cerrar acciones'));
+        await tester.pumpAndSettle();
+      }
       for (final page in [
         StepPage.home,
         StepPage.reference,
@@ -84,6 +103,10 @@ void main() {
         c.page = page;
         c.notifyListeners();
         await tester.pumpAndSettle();
+        if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+          await tester.tap(find.byTooltip('Cerrar acciones'));
+          await tester.pumpAndSettle();
+        }
         final view = find.byType(CustomScrollView);
         final scrollable = find
             .descendant(of: view, matching: find.byType(Scrollable))
@@ -132,7 +155,11 @@ void main() {
         .$2!['runId'];
     await tester.pumpWidget(PersonasApp(controller: c));
     await tester.pumpAndSettle();
-    expect(find.text('0 coincidencias'), findsOneWidget);
+    if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+      await tester.tap(find.byTooltip('Cerrar acciones'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('0 coincidencias · Ocultar'), findsOneWidget);
     bridge.event({
       'type': 'photo',
       'runId': run,
@@ -141,7 +168,7 @@ void main() {
       'key': 'ka',
     });
     await tester.pump();
-    expect(find.text('1 coincidencia'), findsOneWidget);
+    expect(find.text('1 coincidencia · Ocultar'), findsOneWidget);
     bridge.event({
       'type': 'photo',
       'runId': run,
@@ -157,7 +184,7 @@ void main() {
       'key': 'kc',
     });
     await tester.pump();
-    expect(find.text('2 coincidencias'), findsOneWidget);
+    expect(find.text('2 coincidencias · Ocultar'), findsOneWidget);
     bridge.event({'type': 'done', 'runId': run, 'cancelled': false});
     await tester.pumpAndSettle();
     expect(find.text('2 coincidencias'), findsOneWidget);
@@ -232,9 +259,14 @@ void main() {
         c.toggle('a');
         await tester.pumpWidget(PersonasApp(controller: c));
         await tester.pumpAndSettle();
-        expect(find.text('Tus momentos'), findsOneWidget);
-
-        await tester.tap(find.byTooltip('Volver'));
+        if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+          await tester.tap(find.byTooltip('Cerrar acciones'));
+          await tester.pumpAndSettle();
+        }
+        expect(find.bySemanticsLabel('Halladín'), findsOneWidget);
+        await tester.tap(find.byTooltip('Opciones de resultados'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Volver'));
         await tester.pumpAndSettle();
         expect(c.page, available ? StepPage.albums : StepPage.reference);
         expect(
@@ -281,6 +313,8 @@ void main() {
         List.generate(40, (i) => Review('p$i', 'match', 'key$i')),
       );
       await tester.pumpWidget(PersonasApp(controller: session));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Cerrar acciones'));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
       await tester.pumpAndSettle();
@@ -349,12 +383,8 @@ void main() {
     expect(find.text('Selecciona una a una'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Elegir desde Archivos'), 150);
     expect(find.text('Elegir desde Archivos'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Tu primer escaneo'), 150);
-    await tester.tap(find.text('Tu primer escaneo'));
-    await tester.pumpAndSettle();
-    expect(find.text(ScanSpeedNote.message), findsOneWidget);
-    await tester.tap(find.text('Entendido'));
-    await tester.pumpAndSettle();
+    expect(find.text('Tu primer escaneo'), findsNothing);
+    expect(find.text('Puedes cambiar de app'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     c.dispose();
@@ -404,12 +434,18 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+          await tester.tap(find.byTooltip('Cerrar acciones'));
+          await tester.pumpAndSettle();
+        }
         expect(
           Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
           Brightness.light,
         );
         expect(
-          find.bySemanticsLabel(RegExp('Paso [123] de 3:')),
+          page == StepPage.results
+              ? find.bySemanticsLabel('Halladín')
+              : find.bySemanticsLabel(RegExp('Paso [123] de 3:')),
           findsOneWidget,
         );
         if (page == StepPage.analysis) {
@@ -425,22 +461,8 @@ void main() {
           );
         }
         if (page == StepPage.albums) {
-          await revealInBody(tester, find.text('Tu primer escaneo'));
-          await tester.tap(find.text('Tu primer escaneo'));
-          await tester.pumpAndSettle();
-          expect(find.text(ScanSpeedNote.message), findsOneWidget);
-          await tester.tap(find.text('Entendido'));
-          await tester.pumpAndSettle();
-          await revealInBody(tester, find.text('Puedes cambiar de app'));
-          await tester.tap(find.text('Puedes cambiar de app'));
-          await tester.pumpAndSettle();
-          expect(find.byType(BackgroundNote), findsOneWidget);
-          expect(
-            find.textContaining('iOS concede un tiempo limitado'),
-            findsOneWidget,
-          );
-          await tester.tap(find.text('Entendido'));
-          await tester.pumpAndSettle();
+          expect(find.text('Tu primer escaneo'), findsNothing);
+          expect(find.text('Puedes cambiar de app'), findsNothing);
           await tester.drag(
             find.byType(CustomScrollView),
             const Offset(0, -1200),
@@ -456,7 +478,8 @@ void main() {
           // actual scrolling rather than aligning the entire tile to the top.
           for (
             var i = 0;
-            i < 80 && find.text('Elegir').hitTestable().evaluate().isEmpty;
+            i < 80 &&
+                find.byTooltip('Elegir foto').hitTestable().evaluate().isEmpty;
             i++
           ) {
             await tester.drag(
@@ -465,17 +488,22 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
-          await tester.tap(find.text('Elegir'));
+          await tester.tap(find.byTooltip('Elegir foto'));
           await tester.pumpAndSettle();
           expect(c.selected, {'one'});
-          expect(find.text('1 foto'), findsOneWidget);
-          expect(find.bySemanticsLabel('1 foto seleccionada'), findsOneWidget);
-          final share = find.widgetWithText(
-            FilledButton,
-            'Compartir selección',
+          await openPhotoActions(tester);
+          await tester.scrollUntilVisible(
+            find.text('Compartir fotos'),
+            120,
+            scrollable: find.byType(Scrollable).last,
           );
-          expect(tester.widget<FilledButton>(share).onPressed, isNotNull);
-          expect(tester.getRect(share).bottom, lessThanOrEqualTo(480));
+          expect(find.text('1 seleccionada'), findsOneWidget);
+          expect(find.bySemanticsLabel(RegExp('1 foto seleccionada')), findsOneWidget);
+          final share = find.widgetWithText(TextButton, 'Compartir fotos');
+          expect(tester.widget<TextButton>(share).onPressed, isNotNull);
+          expect(share.hitTestable(), findsOneWidget);
+          await tester.tap(find.byTooltip('Cerrar acciones'));
+          await tester.pumpAndSettle();
         }
         expect(tester.takeException(), isNull, reason: page.name);
       }
@@ -493,16 +521,23 @@ void main() {
       c.page = StepPage.results;
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
+      if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Cerrar acciones'));
+        await tester.pumpAndSettle();
+      }
       await tester.scrollUntilVisible(
         find.text('No encontramos coincidencias'),
         150,
       );
       expect(find.text('No encontramos coincidencias'), findsOneWidget);
       expect(find.text('Cambiar referencia'), findsOneWidget);
-      final share = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Compartir selección'),
+      await openPhotoActions(tester);
+      final share = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Compartir fotos'),
       );
       expect(share.onPressed, isNull);
+      await tester.tap(find.byTooltip('Cerrar acciones'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       c.dispose();
@@ -530,6 +565,10 @@ void main() {
       c.albums = [const Album('a', 'Álbum local de prueba', 'one', 2)];
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
+      if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Cerrar acciones'));
+        await tester.pumpAndSettle();
+      }
       expect(
         tester.getTopLeft(find.text('Álbum local de prueba')).dy,
         lessThan(tester.getTopLeft(find.text('Selecciona una a una')).dy),
@@ -570,6 +609,10 @@ void main() {
       final chosen = c.chosen, reference = c.reference;
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
+      if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Cerrar acciones'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Buscar de nuevo en 209 fotos'), findsOneWidget);
       final change = find.widgetWithText(TextButton, 'Cambiar álbum');
       expect(tester.getRect(change).bottom, lessThanOrEqualTo(480));
@@ -607,41 +650,33 @@ void main() {
       c.reviews.add(const Review('excluded', 'rejected', null));
       await tester.pumpWidget(PersonasApp(controller: c));
       await tester.pumpAndSettle();
-      final select = find.byTooltip('Seleccionar todas');
-      expect(select.hitTestable(), findsOneWidget);
-      expect(tester.getCenter(select).dx, closeTo(160, .1));
-      final selectButton = find.descendant(
-        of: select,
-        matching: find.byType(TextButton),
-      );
-      final initialColor = tester
-          .widget<TextButton>(selectButton)
-          .style!
-          .foregroundColor!
-          .resolve({});
+      if (find.byTooltip('Cerrar acciones').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('Cerrar acciones'));
+        await tester.pumpAndSettle();
+      }
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
       await tester.pumpAndSettle();
-      expect(select.hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Acciones de fotos').hitTestable(), findsOneWidget);
+      await openPhotoActions(tester);
+      final select = find.byTooltip('Seleccionar todas');
+      await tester.scrollUntilVisible(
+        select,
+        120,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(select);
       await tester.pumpAndSettle();
       expect(c.selected, hasLength(80));
       final clearAll = find.byTooltip('Deseleccionar todas');
-      expect(tester.getCenter(clearAll).dx, closeTo(160, .1));
-      final selectedButton = find.descendant(
-        of: clearAll,
-        matching: find.byType(TextButton),
-      );
-      expect(
-        tester
-            .widget<TextButton>(selectedButton)
-            .style!
-            .foregroundColor!
-            .resolve({}),
-        isNot(initialColor),
-      );
+      expect(clearAll, findsOneWidget);
       expect(c.selected, containsAll(c.results));
       expect(c.selected, isNot(contains('uncertain')));
-      final share = find.widgetWithText(FilledButton, 'Compartir selección');
+      final share = find.widgetWithText(TextButton, 'Compartir fotos');
+      await tester.scrollUntilVisible(
+        share,
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(share.hitTestable(), findsOneWidget);
       await tester.tap(share);
       await tester.pumpAndSettle();
@@ -651,10 +686,17 @@ void main() {
       expect(ids, hasLength(80));
       expect(ids, isNot(contains('uncertain')));
       expect(ids, isNot(contains('excluded')));
+      await tester.scrollUntilVisible(
+        find.byTooltip('Deseleccionar todas'),
+        -100,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.byTooltip('Deseleccionar todas'));
       await tester.pumpAndSettle();
       expect(c.selected, isEmpty);
-      expect(tester.widget<FilledButton>(share).onPressed, isNull);
+      expect(tester.widget<TextButton>(share).onPressed, isNull);
+      await tester.tap(find.byTooltip('Cerrar acciones'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       c.dispose();

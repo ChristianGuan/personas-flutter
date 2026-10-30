@@ -112,7 +112,15 @@ final class PhotoStore {
         return PhotoPixels(data: output, width: image.width, height: image.height)
     }
     static func preview(_ bytes: Data, edge: Int, crop: [Double]?) throws -> Data {
-        let pixels = try decode(bytes, edge: edge)
+        // Decode enough source detail before extracting a small face region.
+        var sourceEdge = edge
+        if let crop = crop, crop.count == 4 {
+            let fraction = min(crop[2], crop[3])
+            if fraction.isFinite && fraction > 0 {
+                sourceEdge = min(3200, max(edge, Int(Double(edge) / max(0.01, fraction))))
+            }
+        }
+        let pixels = try decode(bytes, edge: sourceEdge)
         let provider = CGDataProvider(data: pixels.data as CFData)!
         guard var image = CGImage(width: pixels.width, height: pixels.height, bitsPerComponent: 8, bitsPerPixel: 32,
             bytesPerRow: pixels.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,

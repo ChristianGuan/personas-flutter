@@ -108,7 +108,10 @@ void main() {
         ..page = StepPage.results;
       c.reviews.add(const Review('local-photo', 'match', null));
       await tester.pumpWidget(PersonasApp(controller: c));
-      await tester.tap(find.widgetWithText(TextButton, 'Analítica'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Cerrar acciones'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Analítica'));
       await tester.pumpAndSettle();
       expect(analytics.enabled, false);
       expect(find.text('Ayúdanos a mejorar'), findsOneWidget);
